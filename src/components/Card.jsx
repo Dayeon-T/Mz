@@ -1,11 +1,11 @@
 import StoreList from "./Storelist"
 
-export function Card({ children, className = "" }) {
+export function Card({ children, className = "", restaurants }) {
   return (
-    <div className={`bg-white rounded-tr-[100px] box-border h-screen ${className}`}>
+    <div className={`bg-white rounded-tr-[100px] h-[100%] ${className}`}>
       {children}
-      
-      <StoreList />
+
+      <StoreList restaurants={restaurants} />
     </div>
   )
 }

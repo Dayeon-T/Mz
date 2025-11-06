@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { supabase } from "../lib/supabase"
+import { signIn, resetPassword } from "../api/auth"
 import toast from "react-hot-toast"
 
 const inputClass = "h-[60px] bg-[#ECECEC] rounded-[18px] p-[24px] text-[20px] box-border w-full mb-[20px] focus:outline-none focus:ring-2 focus:ring-main/70"
@@ -29,15 +29,9 @@ export default function Login({ onSwitchToSignUp, onLoginSuccess }) {
     setIsSubmitting(true)
     
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      })
-
-      if (error) throw error
-
-      toast.success("로그인 성공!")
-      console.log("User:", data.user)
+      const { user } = await signIn({ email: email.trim(), password })
+      
+      console.log("User:", user)
       
       // 로그인 성공 시 홈으로 돌아가기
       if (onLoginSuccess) {
@@ -67,12 +61,7 @@ export default function Login({ onSwitchToSignUp, onLoginSuccess }) {
     }
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
-
-      if (error) throw error
-
+      await resetPassword(email.trim())
       toast.success("비밀번호 재설정 이메일을 발송했습니다.")
     } catch (error) {
       toast.error("비밀번호 재설정 요청에 실패했습니다.")

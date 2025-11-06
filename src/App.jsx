@@ -3,6 +3,8 @@ import { supabase } from './lib/supabase'
 import Log from "./pages/Log"
 import Home from "./pages/Home"
 import Signin from "./pages/Signin"
+import SearchResult from "./pages/SearchResult"
+import { Routes, Route, Navigate } from 'react-router-dom'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -36,8 +38,14 @@ function App() {
     )
   }
 
-  // 로그인된 사용자는 홈으로, 아니면 로그인 페이지로
-  return user ? <Home /> : <Log />
+  // 라우팅: 로그인 상태에 따라 홈/검색 접근 제어(필요시 검색은 비로그인도 허용 가능)
+  return (
+    <Routes>
+      <Route path="/" element={user ? <Home /> : <Log />} />
+      <Route path="/search" element={user ? <SearchResult /> : <Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
 }
 
 export default App

@@ -1,76 +1,111 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 
 export default function KakaoMap({ restaurants = [] }) {
-  const [map, setMap] = useState(null)
+  const mapRef = useRef(null)
+  const overlaysRef = useRef([])
+  const markersRef = useRef([])
 
-  
-
+  // 1) 카카오 스크립트는 최초 1번만 로드 (실패한 기존 스크립트가 있으면 제거 후 재시도)
   useEffect(() => {
-    // 카카오맵 SDK 로드
+    if (window.kakao?.maps && mapRef.current) return
+
+    const apiKey = import.meta.env.VITE_KAKAO_MAP_API_KEY
+    if (!apiKey) {
+      console.error('[KakaoMap] VITE_KAKAO_MAP_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.')
+      return
+    }
+
+    const existing = document.querySelector('script[data-kakao-sdk="maps"]')
+    if (existing && !window.kakao?.maps) {
+      // 이전 로드 실패로 kakao.maps가 없는 경우 스크립트를 제거하고 재시도
+      existing.parentNode?.removeChild(existing)
+    } else if (existing) {
+      return // 이미 정상 로드됨
+    }
+
     const script = document.createElement('script')
     script.async = true
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${import.meta.env.VITE_KAKAO_MAP_API_KEY}&autoload=false`
-    
+    script.defer = true
+    script.dataset.kakaoSdk = 'maps'
+    // https를 강제해서 혼합 콘텐츠/리다이렉트 문제 방지
+    const sdkUrl = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&autoload=false`
+    script.src = sdkUrl
+
     script.onload = () => {
+      if (!window.kakao?.maps) {
+        console.error('[KakaoMap] kakao.maps가 초기화되지 않았습니다. 도메인 허용 또는 JavaScript 키를 확인하세요.', {
+          origin: window.location.origin,
+        })
+        return
+      }
       window.kakao.maps.load(() => {
         const container = document.getElementById('kakao-map')
+        if (!container) return
         const options = {
-          center: new window.kakao.maps.LatLng(37.4844, 126.9297), // 신림동 중심
-          level: 3 // 확대 레벨
+          center: new window.kakao.maps.LatLng(37.4844, 126.9297),
+          level: 3,
         }
-        
-        const kakaoMap = new window.kakao.maps.Map(container, options)
-        setMap(kakaoMap)
-        
-        // 현재 활성화된 오버레이를 추적하기 위한 변수
-        let currentOverlay = null
-        
-        console.log('KakaoMap: 받은 restaurants 데이터:', restaurants)
-        
-        // 카테고리 HTML 생성 함수
-        const getCategoriesHTML = (categories) => {
-          console.log('KakaoMap: 카테고리 데이터:', categories)
-          if (!categories || !Array.isArray(categories)) {
-            console.log('KakaoMap: 카테고리가 없거나 배열이 아님')
-            return '<span style="color: #999; font-size: 12px;">카테고리 없음</span>'
-          }
-          if (categories.length === 0) {
-            console.log('KakaoMap: 카테고리 배열이 비어있음')
-            return '<span style="color: #999; font-size: 12px;">카테고리 미분류</span>'
-          }
-          return categories.map(category => 
-            `<span style="color: #E7673C; font-size: 18px; font-weight: 600; display: inline-block; margin-left:10px; ">#${category}</span>
-            `
-        ).join('')
-        }
+        mapRef.current = new window.kakao.maps.Map(container, options)
+      })
+    }
 
-        // 가게들을 커스텀 색깔 마커로 표시
-        restaurants.forEach((restaurant, index) => {
-          console.log(`KakaoMap: 레스토랑 ${index}:`, restaurant)
-          console.log(`KakaoMap: 레스토랑 ${index} 카테고리:`, restaurant.categories)
-          console.log(`KakaoMap: 레스토랑 ${index} 평점:`, restaurant.rating)
-          if (restaurant.lat && restaurant.lng) {
-            const markerPosition = new window.kakao.maps.LatLng(restaurant.lat, restaurant.lng)
-            
-            // 마커이미지의 주소 (커스텀 이미지)
-            const imageSrc = '/src/assets/marker.svg' // 또는 원하는 이미지 URL
-            const imageSize = new window.kakao.maps.Size(64, 69) // 마커이미지의 크기
-            const imageOption = { offset: new window.kakao.maps.Point(27, 69) } // 마커이미지의 옵션
-            
-            // 마커의 이미지정보를 가지고 있는 마커이미지를 생성
-            const markerImage = new window.kakao.maps.MarkerImage(imageSrc, imageSize, imageOption)
-            
-            const marker = new window.kakao.maps.Marker({
-              position: markerPosition,
-              title: restaurant.name, // 마커에 마우스 오버 시 표시될 제목
-              image: markerImage
-            })
-            marker.setMap(kakaoMap)
-            
-            // CustomOverlay 생성
-            const overlayContent = document.createElement('div')
-            overlayContent.innerHTML = `
+    script.onerror = () => {
+      console.error('[KakaoMap] 카카오맵 스크립트 로드 실패. 다음을 확인하세요: 1) JavaScript 키, 2) 플랫폼 > Web 사이트 도메인에 현재 도메인 등록, 3) 네트워크 차단 여부', {
+        url: script.src,
+        origin: window.location.origin,
+      })
+    }
+    document.head.appendChild(script)
+
+    // 스크립트는 유지 — 페이지 전환 간 재활용
+  }, [])
+
+  // 2) 지도 준비가 되면 restaurants에 따라 마커/오버레이만 갱신
+  useEffect(() => {
+    if (!window.kakao?.maps || !mapRef.current) return
+
+    // 기존 마커/오버레이 제거
+    markersRef.current.forEach(m => m.setMap(null))
+    overlaysRef.current.forEach(o => o.setMap(null))
+    markersRef.current = []
+    overlaysRef.current = []
+
+    const kakaoMap = mapRef.current
+
+    const getCategoriesHTML = (categories) => {
+      if (!categories || !Array.isArray(categories)) {
+        return '<span style="color: #999; font-size: 12px;">카테고리 없음</span>'
+      }
+      if (categories.length === 0) {
+        return '<span style="color: #999; font-size: 12px;">카테고리 미분류</span>'
+      }
+      return categories.map(category =>
+        `<span style="color: #E7673C; font-size: 18px; font-weight: 600; display: inline-block; margin-left:10px; ">#${category}</span>`
+      ).join('')
+    }
+
+    let currentOverlay = null
+
+    restaurants.forEach((restaurant) => {
+      if (!(restaurant.lat && restaurant.lng)) return
+      const markerPosition = new window.kakao.maps.LatLng(restaurant.lat, restaurant.lng)
+
+      const imageSrc = '/src/assets/marker.svg'
+      const imageSize = new window.kakao.maps.Size(64, 69)
+      const imageOption = { offset: new window.kakao.maps.Point(27, 69) }
+      const markerImage = new window.kakao.maps.MarkerImage(imageSrc, imageSize, imageOption)
+
+      const marker = new window.kakao.maps.Marker({
+        position: markerPosition,
+        title: restaurant.name,
+        image: markerImage,
+      })
+      marker.setMap(kakaoMap)
+      markersRef.current.push(marker)
+
+      const overlayContent = document.createElement('div')
+      overlayContent.innerHTML = `
               <div style="position: relative;">
                 <div style="width: 500px;
                            height: 250px;
@@ -140,54 +175,34 @@ export default function KakaoMap({ restaurants = [] }) {
               </div>
             `
 
-            const customOverlay = new window.kakao.maps.CustomOverlay({
-              content: overlayContent,
-              position: markerPosition,
-              yAnchor: 1.4
-            })
-            
-            window.kakao.maps.event.addListener(marker, 'click', () => {
-              // 이전 오버레이가 있다면 닫기
-              if (currentOverlay) {
-                currentOverlay.setMap(null)
-              }
-              
-              // 새 오버레이 표시하고 현재 오버레이로 설정
-              customOverlay.setMap(kakaoMap)
-              currentOverlay = customOverlay
-            })
-            
-            // 닫기 버튼 클릭 시 오버레이 닫기
-            const closeButton = overlayContent.querySelector('button')
-            if (closeButton) {
-              closeButton.onclick = () => {
-                customOverlay.setMap(null)
-                currentOverlay = null
-              }
-            }
-          }
-        })
+      const customOverlay = new window.kakao.maps.CustomOverlay({
+        content: overlayContent,
+        position: markerPosition,
+        yAnchor: 1.4,
       })
-    }
-    
-    script.onerror = () => {
-      console.error('카카오맵 스크립트 로드 실패')
-    }
-    
-    document.head.appendChild(script)
-    
-    return () => {
-      if (document.head.contains(script)) {
-        document.head.removeChild(script)
+      overlaysRef.current.push(customOverlay)
+
+      window.kakao.maps.event.addListener(marker, 'click', () => {
+        if (currentOverlay) currentOverlay.setMap(null)
+        customOverlay.setMap(kakaoMap)
+        currentOverlay = customOverlay
+      })
+
+      const closeButton = overlayContent.querySelector('button')
+      if (closeButton) {
+        closeButton.onclick = () => {
+          customOverlay.setMap(null)
+          if (currentOverlay === customOverlay) currentOverlay = null
+        }
       }
-    }
+    })
   }, [restaurants])
 
 
   return (
     <div 
       id="kakao-map" 
-      className="w-full h-full rounded-tl-[40px] overflow-hidden"
+      className="relative z-0 w-full h-[100%] rounded-tl-[40px] overflow-hidden"
       style={{ minHeight: '400px' }}
     />
   )

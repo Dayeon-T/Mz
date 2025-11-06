@@ -1,133 +1,30 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect, useMemo } from 'react'
 import MzSvg from '../assets/mz맛집.svg?react'
 import UserProfile from '../components/UserProfile.jsx'
 import { Card, Container } from '../components/Card.jsx'
 import KakaoMap from '../components/KakaoMap.jsx'
 import Signin from './Signin.jsx'
+import { fetchRestaurantsWithData } from '../api/restaurants'
+import SearchBar from '../components/SearchBar.jsx'
+import { useNavigate, Link } from 'react-router-dom'
+import { signOut as signOutApi } from '../api/auth'
+import Addmz from '../assets/addMz.svg?react'
+import ModalBlur from '../components/ModalBlur.jsx'
+import AddmzModal from '../modals/AddmzModal.jsx'
 
 export default function Home() {
+  const navigate = useNavigate()
   const [showSignin, setShowSignin] = useState(false)
   const [restaurants, setRestaurants] = useState([])
+  const [query, setQuery] = useState("")
 
   // 가게 목록 가져오기
   useEffect(() => {
-    const fetchRestaurants = async () => {
-      try {
-        // 외래키 제약조건을 이용한 조인 쿼리
-        const { data: restaurantsWithCategories, error } = await supabase
-  .from('restaurants')
-  .select(`
-          id, name, address, lat, lng,
-          restaurant_categories:restaurant_categories(
-            categories:categories!restaurant_categories_category_id_fkey(name)
-          )
-        `);
-
-
-if (error) throw error; // ← 에러 처리는 이걸로
-console.log('Home: 조인된 레스토랑 데이터:', restaurantsWithCategories);
-        
-        if (!restaurantsWithCategories || restaurantsWithCategories.length === 0) {
-          console.log('Home: 레스토랑 데이터가 없음')
-          setRestaurants([])
-          return
-        }
-
-        // 리뷰 데이터 가져오기
-        const restaurantIds = restaurantsWithCategories.map(r => r.id)
-        const { data: allReviews } = await supabase
-          .from('reviews')
-          .select('restaurant_id, rating')
-          .in('restaurant_id', restaurantIds)
-        
-        console.log('Home: 리뷰 데이터:', allReviews)
-
-        // 이미지 데이터 별도로 조회 (컬럼명 확인을 위해 여러 시도)
-        console.log('Home: 이미지 테이블 구조 확인 중...')
-        let allImages = []
-        
-        try {
-          // 먼저 테이블 전체 구조 확인
-          const { data: imageTest, error: imageError } = await supabase
-            .from('restaurant_images')
-            .select('*')
-            .limit(1)
-          
-          console.log('Home: restaurant_images 테이블 샘플 데이터:', imageTest)
-          console.log('Home: restaurant_images 에러:', imageError)
-          
-          if (imageTest && imageTest.length > 0) {
-            console.log('Home: 이미지 테이블 컬럼들:', Object.keys(imageTest[0]))
-            
-            // 실제 이미지 데이터 조회 (컬럼명을 동적으로 찾기)
-            const columns = Object.keys(imageTest[0])
-            const urlColumn = columns.find(col => 
-              col.includes('url') || col.includes('path') || col.includes('src')
-            ) || 'url' // 기본값
-            
-            const { data: images } = await supabase
-              .from('restaurant_images')
-              .select(`restaurant_id, ${urlColumn}`)
-              .in('restaurant_id', restaurantIds)
-            
-            allImages = images || []
-            console.log('Home: 조회된 이미지 데이터:', allImages)
-          }
-        } catch (imgError) {
-          console.log('Home: 이미지 조회 실패:', imgError)
-        }
-        
-        // 모든 데이터 조합하기
-        const restaurantsWithData = restaurantsWithCategories.map(restaurant => {
-          // 해당 레스토랑의 리뷰들 찾기
-          const restaurantReviews = allReviews?.filter(review => review.restaurant_id === restaurant.id) || []
-          
-          // 평균 rating 계산
-          const ratings = restaurantReviews.map(review => review.rating)
-          const avgRating = ratings.length > 0 
-            ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1)
-            : 4.0
-          
-          // 카테고리 이름들 추출 (조인된 데이터에서)
-          const categories = restaurant.restaurant_categories
-            ?.map(rc => rc.categories?.name)
-            .filter(name => name) || []
-          
-          // 첫 번째 이미지 URL 추출 (별도 조회한 데이터에서)
-          const restaurantImages = allImages?.filter(img => img.restaurant_id === restaurant.id) || []
-          const firstImage = restaurantImages[0] ? 
-            (restaurantImages[0].url || restaurantImages[0].image_url || restaurantImages[0].src || restaurantImages[0].image_path || null) : null
-          
-          console.log(`Home: ${restaurant.name} 카테고리:`, categories)
-          console.log(`Home: ${restaurant.name} 첫번째 이미지:`, firstImage)
-          
-          return {
-            id: restaurant.id,
-            name: restaurant.name,
-            address: restaurant.address,
-            lat: restaurant.lat,
-            lng: restaurant.lng,
-            rating: parseFloat(avgRating),
-            categories: categories,
-            image: firstImage
-          }
-        })
-        
-        console.log('Home: 최종 처리된 데이터:', restaurantsWithData)
-        setRestaurants(restaurantsWithData)
-      } catch (error) {
-        console.error('가게 목록 로드 오류:', error)
-        // 에러 발생 시 기본 데이터라도 로드해보기
-        const { data: basicData } = await supabase
-          .from('restaurants')
-          .select('id, name, address, lat, lng')
-        console.log('Home: 기본 데이터로 fallback:', basicData)
-        setRestaurants(basicData?.map(r => ({ ...r, rating: 4.0, categories: [] })) || [])
-      }
+    const load = async () => {
+      const data = await fetchRestaurantsWithData()
+      setRestaurants(data)
     }
-
-    fetchRestaurants()
+    load()
   }, [])
 
   const handleLoginClick = () => {
@@ -138,23 +35,78 @@ console.log('Home: 조인된 레스토랑 데이터:', restaurantsWithCategories
     setShowSignin(false)
   }
 
+  const filteredRestaurants = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return restaurants
+    return restaurants.filter(r => {
+      const inName = r.name?.toLowerCase().includes(q)
+      const inAddr = r.address?.toLowerCase().includes(q)
+      const inCat = Array.isArray(r.categories) && r.categories.some(c => c?.toLowerCase().includes(q))
+      return inName || inAddr || inCat
+    })
+  }, [restaurants, query])
+
+  // StoreList는 간단 목록을 원함
+  const basicList = useMemo(() => filteredRestaurants.map(r => ({ id: r.id, name: r.name, address: r.address })), [filteredRestaurants])
+
   if (showSignin) {
     return <Signin onBackToHome={handleBackToHome} />
   }
+  const handleSignOut = async () => {
+    try {
+      await signOutApi()
+      // 즉시 로그인 화면으로 전환 (App의 인증 상태 갱신과 무관하게 빠른 피드백)
+      setShowSignin(true)
+    } catch (error) {
+      console.error('로그아웃 오류:', error)
+    }
+  }
+
 
   return (
-    <div>
-      <Container>
-        <MzSvg />
-        <div className='flex'>
-          <div>
-            <UserProfile onLoginClick={handleLoginClick} />
-            <Card className="mt-[40px] w-[418px]" />
+
+    // 1. 최상위 div에서 화면 높이 고정 및 레이아웃 설정
+    <div className='h-screen overflow-hidden flex flex-col'>
+      <AddmzModal />
+      <button onClick={handleSignOut} className="text-[16px] text-gray underline mt-[8px] text-left w-fit absolute right-4 top-4 hover:text-white">
+          로그아웃
+      </button>
+      {/* 2. Container가 남은 공간을 모두 채우도록 설정 */}
+      <Container className="flex-grow flex flex-col">
+        
+        {/* 헤더 부분 (높이 고정) */}
+        <div className='flex-shrink-0 flex'>
+          <div className='w-[418px] pr-[197px]'>
+            <Link to="/" aria-label="홈으로 이동">
+              <MzSvg className="cursor-pointer" />
+            </Link>
           </div>
-          <div className='bg-white/80 mt-4 ml-8 box-border w-full h-screen rounded-tl-[40px] overflow-hidden'>
-            <KakaoMap restaurants={restaurants} />
+          <SearchBar value={query} onChange={setQuery} onSubmit={(q)=>{
+            if (q) navigate(`/search?q=${encodeURIComponent(q)}`)
+          }} />
+        </div>
+
+        {/* 3. 메인 콘텐츠 영역이 남은 공간을 모두 채우도록 설정 */}
+        <div className='flex-grow flex mt-4 min-h-0'>
+          {/* 왼쪽 사이드바 (높이 고정, 내부 스크롤) */}
+          <div className="flex-shrink-0 w-[418px] flex flex-col">
+            <UserProfile onLoginClick={handleLoginClick} />
+            {/* Card가 남은 공간을 채우고 내부 스크롤 */}
+            <div className="flex-grow mt-[40px] min-h-0">
+              <Card className="h-full" restaurants={basicList} />
+            </div>
+          </div>
+
+          {/* 4. 지도 영역이 남은 공간을 모두 채우도록 설정 (h-screen 제거) */}
+          <div className='relative ml-8 w-full rounded-tl-[40px] overflow-hidden'>
+            <KakaoMap restaurants={filteredRestaurants} />
+            
+            <div className='absolute bottom-12 right-12 p-4 w-16 h-16 rounded-full flex items-center justify-center text-white bg-sub z-40 shadow-lg cursor-pointer hover:bg-red-500 transition-colors'>
+              <Addmz/>
+            </div>
           </div>
         </div>
+        
       </Container>
     </div>
   );

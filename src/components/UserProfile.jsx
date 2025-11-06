@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Ping from '../assets/ping.svg?react'
 import User from '../assets/user.svg?react'
+import { getProfileById } from '../api/profiles'
+import { signOut as signOutApi } from '../api/auth'
 
 const profileContainerStyles = "w-[418px] h-[141px] bg-white rounded-b-[100px] rounded-tr-[100px] mt-[16px] flex items-center"
 const avatarStyles = "ml-[40px] w-[94px] h-[94px] bg-search-bg rounded-[100px] flex items-center justify-center"
@@ -15,15 +17,7 @@ const loginTextStyles = "text-xl"
 const linkStyles = "text-text font-semibold hover:underline cursor-pointer"
 
 function LoggedInProfile({ user, profile }) {
-  const handleSignOut = async () => {
-    try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
-    } catch (error) {
-      console.error('로그아웃 오류:', error)
-    }
-  }
-
+  
   return (
     <>
       <div className={avatarStyles}>
@@ -46,6 +40,7 @@ function LoggedInProfile({ user, profile }) {
           <Ping />
           <p className={locationTextStyles}>서울특별시 관악구 호암로</p>
         </div>
+        
         
       </div>
     </>
@@ -83,22 +78,10 @@ export default function UserProfile({ onLoginClick }) {
         if (session?.user) {
           // 로그인 시 프로필 정보 가져오기
           try {
-            const { data: profileData, error } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single()
-            
-            if (mounted) {
-              if (error) {
-                console.error('프로필 로드 오류:', error)
-                setProfile(null)
-              } else {
-                setProfile(profileData)
-              }
-            }
+            const profileData = await getProfileById(session.user.id)
+            if (mounted) setProfile(profileData)
           } catch (error) {
-            console.error('프로필 쿼리 오류:', error)
+            console.error('프로필 로드 오류:', error)
             if (mounted) setProfile(null)
           }
         } else {

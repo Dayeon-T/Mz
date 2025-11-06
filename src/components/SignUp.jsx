@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { signUp } from "../api/auth"
-import { supabase } from "../lib/supabase"
+import { isEmailAvailable, isNicknameAvailable } from "../api/profiles"
 import toast from "react-hot-toast"
 
 const inputClass = "h-[60px] bg-[#ECECEC] rounded-[18px] p-[24px] text-[20px]  box-border w-full mb-[20px] focus:outline-none focus:ring-2 focus:ring-main/70"
@@ -32,20 +32,13 @@ export default function SignUp({ onSwitchToLogin }) {
 
     try {
       setIsEmailChecking(true)
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("email", email.trim())
-        .maybeSingle()
-
-      if (error) throw error
-      
-      if (data) {
-        toast.error("이미 가입된 이메일입니다.")
-        setIsEmailChecked(false)
-      } else {
+      const ok = await isEmailAvailable(email)
+      if (ok) {
         toast.success("사용 가능한 이메일입니다.")
         setIsEmailChecked(true)
+      } else {
+        toast.error("이미 가입된 이메일입니다.")
+        setIsEmailChecked(false)
       }
     } catch (error) {
       toast.error("이메일 확인 중 오류가 발생했습니다.")
@@ -64,20 +57,13 @@ export default function SignUp({ onSwitchToLogin }) {
 
     try {
       setIsNicknameChecking(true)
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("nickname", nickname.trim())
-        .maybeSingle()
-
-      if (error) throw error
-      
-      if (data) {
-        toast.error("이미 사용중인 닉네임입니다.")
-        setIsNicknameChecked(false)
-      } else {
+      const ok = await isNicknameAvailable(nickname)
+      if (ok) {
         toast.success("사용 가능한 닉네임입니다!")
         setIsNicknameChecked(true)
+      } else {
+        toast.error("이미 사용중인 닉네임입니다.")
+        setIsNicknameChecked(false)
       }
     } catch (error) {
       toast.error("닉네임 확인 중 오류가 발생했습니다.")
