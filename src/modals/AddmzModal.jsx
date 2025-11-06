@@ -6,12 +6,13 @@ import AddImage from '../assets/image.svg?react'
 const inputstyle="h-8 bg-[#ECECEC] rounded-[20px] w-[31%] focus:outline-none px-4 focus:ring-1 ring-main/70 text-[18px] font-medium placeholder:font-medium placeholder:text-[18px]"
 const timeinput='bg-[#ECECEC] flex-1 h-8 rounded-full text-center w-[45%] focus:outline-none px-4 focus:ring-1 ring-main/70 '
 
-export default function AddmzModal(){
+export default function AddmzModal({ onClose }){
     const [address, setAddress] = useState('')
     const [detailAddress, setDetailAddress] = useState('')
     const [zonecode, setZonecode] = useState('')
     const [timeMode, setTimeMode] = useState('everyday') // 'everyday' or 'daybyday'
     const [selectedDay, setSelectedDay] = useState(0) // 0=월, 1=화, 2=수, 3=목, 4=금, 5=토, 6=일
+    const [step, setStep] = useState(1) // 1: 기본 정보, 2: 추가 정보
     
     // 매일 같은 시간 영업
     const [is24Hours, setIs24Hours] = useState(false)
@@ -80,15 +81,39 @@ export default function AddmzModal(){
         }).open()
     }
 
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && typeof onClose === 'function') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     return(
-        <div className='absolute w-full h-full flex justify-center items-center px-10 pt-16 pb-10'>
-            <ModalBlur />
-            <div className='z-50 w-[1200px] h-[100%] px-20 pt-20 pb-10 bg-white rounded-[82px] shadow-[0px_0px_5px_10px_rgba(0,0,0,0.04)] overflow-y-auto box-border'>
-                <p className='text-2xl font-bold mb-6'>맛집 등록</p>
+        <div className='fixed inset-0 flex justify-center items-center px-10 pt-16 pb-10 z-50'>
+            <ModalBlur onClick={onClose} />
+            <div
+                className='relative z-50 w-[1200px] h-[100%] pl-10 pr-20 pt-20 pb-10 bg-white rounded-[82px] shadow-[0px_0px_5px_10px_rgba(0,0,0,0.04)] overflow-y-auto box-border'
+                onClick={(e) => e.stopPropagation()}
+                role='dialog'
+                aria-modal='true'
+            >
+                <button
+                    type='button'
+                    onClick={onClose}
+                    aria-label='모달 닫기'
+                    className='absolute top-6 right-6 w-10 h-10 rounded-full bg-black/5 hover:bg-black/10 text-2xl leading-none flex items-center justify-center'
+                >
+                    ×
+                </button>
+                <p className='text-2xl font-bold mb-6 ml-4'>맛집 등록</p>
+                {step === 1 && (
                 <div className='flex gap-10'>
                     
-                        <form action="" className='text-black text-xl font-semibold hidden'>
-                            <div className='grid grid-cols-2 gap-8'>
+                        <form action="" className='text-black text-xl font-semibold'>
+                            <div className='grid grid-cols-2 gap-16'>
                             <div className='flex flex-col gap-4'>
                             <div className='flex items-start '>
                                 <label htmlFor="" className='mr-6 w-24 flex-shrink-0 text-right '>주소</label>
@@ -372,17 +397,21 @@ export default function AddmzModal(){
                                 </div>
                             </div>
                           </div>
-                          <div className='flex justify-end'>
-                          <button
-                            className='w-44 h-16 px-10 py-4 bg-red-400 rounded-3xl text-white text-3xl font-semibold mt-12'
-                          >다음</button></div>
+                                                    <div className='flex justify-end'>
+                                                        <button
+                                                                type='button'
+                                                                onClick={() => setStep(2)}
+                                                                className='w-44 h-16 px-10 py-4 bg-red-400 rounded-3xl text-white text-3xl font-semibold mt-12'
+                                                        >다음</button>
+                                                    </div>
                         </form>
 
                         
                    
                     
-                </div>
-                <form action="" className='grid grid-cols-3'>
+                                </div>
+                                )}
+                                <form action="" className={step === 2 ? 'grid grid-cols-3' : 'hidden'} id="additional-info">
                             
                                 <div className='flex flex-col gap-8'>
                                     <p>포장이 가능한 식당인가요?</p>

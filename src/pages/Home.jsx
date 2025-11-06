@@ -15,6 +15,7 @@ import AddmzModal from '../modals/AddmzModal.jsx'
 export default function Home() {
   const navigate = useNavigate()
   const [showSignin, setShowSignin] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
   const [restaurants, setRestaurants] = useState([])
   const [query, setQuery] = useState("")
 
@@ -67,7 +68,7 @@ export default function Home() {
 
     // 1. 최상위 div에서 화면 높이 고정 및 레이아웃 설정
     <div className='h-screen overflow-hidden flex flex-col'>
-      <AddmzModal />
+      
       <button onClick={handleSignOut} className="text-[16px] text-gray underline mt-[8px] text-left w-fit absolute right-4 top-4 hover:text-white">
           로그아웃
       </button>
@@ -101,13 +102,23 @@ export default function Home() {
           <div className='relative ml-8 w-full rounded-tl-[40px] overflow-hidden'>
             <KakaoMap restaurants={filteredRestaurants} />
             
-            <div className='absolute bottom-12 right-12 p-4 w-16 h-16 rounded-full flex items-center justify-center text-white bg-sub z-40 shadow-lg cursor-pointer hover:bg-red-500 transition-colors'>
+            <div
+              className='absolute bottom-12 right-12 p-4 w-16 h-16 rounded-full flex items-center justify-center text-white bg-sub z-40 shadow-lg cursor-pointer hover:bg-red-500 transition-colors'
+              onClick={() => setShowAddModal(true)}
+              aria-label='맛집 등록 모달 열기'
+              role='button'
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowAddModal(true) }}
+            >
               <Addmz/>
             </div>
           </div>
         </div>
         
       </Container>
+      {showAddModal && (
+        <AddmzModal onClose={() => setShowAddModal(false)} />
+      )}
     </div>
   );
 }
