@@ -60,21 +60,36 @@ function isOpenNow(open, close, breakStart, breakEnd, now = new Date()) {
 }
 
 // 카테고리/리뷰/이미지까지 조합된 레스토랑 리스트
-export async function fetchRestaurantsWithData() {
+export async function fetchRestaurantsWithData(restaurantIds) {
   try {
-    const { data: restaurants, error } = await supabase.from("restaurants")
-      .select(`
-        id, name, address, lat, lng,
+    let query = supabase.from("restaurants").select(`
+        id, name, address, lat, lng, created_at,
+        created_by, tagline, extra_note,
         open_time, close_time, break_start, break_end,
         restaurant_categories:restaurant_categories(
           categories:categories!restaurant_categories_category_id_fkey(name)
         )
       `);
 
+    if (Array.isArray(restaurantIds) && restaurantIds.length > 0) {
+      query = query.in("id", restaurantIds);
+    }
+
+    const { data: restaurants, error } = await query;
+
     if (error) throw error;
     if (!restaurants || restaurants.length === 0) return [];
 
     const ids = restaurants.map((r) => r.id);
+    if (ids.length === 0) return [];
+
+    const creatorIds = Array.from(
+      new Set(
+        restaurants
+          .map((r) => r.created_by)
+          .filter((val) => typeof val === "string" && val.length > 0)
+      )
+    );
 
     // 리뷰 모음
     const { data: reviews } = await supabase
@@ -114,7 +129,6 @@ export async function fetchRestaurantsWithData() {
         : await q;
       images = imgData || [];
     }
-
     const imagesByRestaurant = new Map();
     (images || []).forEach((img) => {
       if (!imagesByRestaurant.has(img.restaurant_id)) {
@@ -123,12 +137,82 @@ export async function fetchRestaurantsWithData() {
       imagesByRestaurant.get(img.restaurant_id).push(img);
     });
 
+    let reviewDetails = [];
+    try {
+      const { data: detailed } = await supabase
+        .from("reviews")
+        .select(
+          `id, restaurant_id, rating, text_content, created_at, visit_date,
+           user:profiles!reviews_user_id_fkey(nickname, avatar_url),
+           review_images:review_images(url, sort_order)`
+        )
+        .in("restaurant_id", ids)
+        .order("created_at", { ascending: false });
+      reviewDetails = detailed || [];
+    } catch {}
+
+    const creatorProfilesMap = new Map();
+    if (creatorIds.length > 0) {
+      try {
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("id, nickname, avatar_url")
+          .in("id", creatorIds);
+        (profilesData || []).forEach((profile) => {
+          creatorProfilesMap.set(profile.id, profile);
+        });
+      } catch {}
+    }
+
     const reviewsByRestaurant = new Map();
     (reviews || []).forEach((rv) => {
       if (!reviewsByRestaurant.has(rv.restaurant_id)) {
         reviewsByRestaurant.set(rv.restaurant_id, []);
       }
       reviewsByRestaurant.get(rv.restaurant_id).push(rv.rating);
+    });
+
+    const reviewDetailsByRestaurant = new Map();
+    const reviewPhotosByRestaurant = new Map();
+    const parseOrder = (value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    reviewDetails.forEach((rev) => {
+      const normalizedImages = Array.isArray(rev.review_images)
+        ? [...rev.review_images]
+            .sort((a, b) => {
+              const aOrder = parseOrder(a?.sort_order);
+              const bOrder = parseOrder(b?.sort_order);
+              return aOrder - bOrder;
+            })
+            .map((img) => img?.url)
+            .filter(Boolean)
+        : [];
+
+      const normalizedReview = {
+        id: rev.id,
+        restaurant_id: rev.restaurant_id,
+        rating: rev.rating,
+        text: rev.text_content || "",
+        created_at: rev.created_at || null,
+        visit_date: rev.visit_date || null,
+        author: {
+          nickname: rev?.user?.nickname || null,
+          avatar_url: rev?.user?.avatar_url || null,
+        },
+        images: normalizedImages,
+      };
+
+      if (!reviewDetailsByRestaurant.has(rev.restaurant_id)) {
+        reviewDetailsByRestaurant.set(rev.restaurant_id, []);
+      }
+      reviewDetailsByRestaurant.get(rev.restaurant_id).push(normalizedReview);
+
+      if (!reviewPhotosByRestaurant.has(rev.restaurant_id)) {
+        reviewPhotosByRestaurant.set(rev.restaurant_id, []);
+      }
+      reviewPhotosByRestaurant.get(rev.restaurant_id).push(...normalizedImages);
     });
 
     return restaurants.map((r) => {
@@ -144,14 +228,13 @@ export async function fetchRestaurantsWithData() {
           ?.map((rc) => rc.categories?.name)
           .filter(Boolean) || [];
 
-      const firstImageObj = imagesByRestaurant.get(r.id)?.[0];
-      const firstImage = firstImageObj
-        ? firstImageObj.url ||
-          firstImageObj.image_url ||
-          firstImageObj.src ||
-          firstImageObj.image_path ||
-          null
-        : null;
+      const imageListRaw = imagesByRestaurant.get(r.id) || [];
+      const imageUrls = imageListRaw
+        .map(
+          (img) => img.url || img.image_url || img.src || img.image_path || null
+        )
+        .filter(Boolean);
+      const firstImage = imageUrls[0] || null;
 
       const is_open = isOpenNow(
         r.open_time,
@@ -160,6 +243,14 @@ export async function fetchRestaurantsWithData() {
         r.break_end
       );
 
+      const creatorProfile = creatorProfilesMap.get(r.created_by) || null;
+
+      const detailedReviews = reviewDetailsByRestaurant.get(r.id) || [];
+      const reviewPhotos = (reviewPhotosByRestaurant.get(r.id) || []).filter(
+        Boolean
+      );
+      const reviewPhotosPreview = reviewPhotos.slice(0, 4);
+
       return {
         id: r.id,
         name: r.name,
@@ -167,26 +258,57 @@ export async function fetchRestaurantsWithData() {
         lat: r.lat,
         lng: r.lng,
         rating: avg,
+        review_count: ratings.length,
         categories,
         image: firstImage,
+        images: imageUrls,
+        created_at: r.created_at,
         is_open,
+        tagline: r.tagline || null,
+        extra_note: r.extra_note || null,
+        created_by: r.created_by || null,
+        recommended_by: creatorProfile,
+        reviews: detailedReviews,
+        review_photos: reviewPhotosPreview,
       };
     });
   } catch {
     // fallback: 기본 컬럼만
-    const { data: basic } = await supabase
+    let fallbackQuery = supabase
       .from("restaurants")
       .select(
-        "id, name, address, lat, lng, open_time, close_time, break_start, break_end"
+        "id, name, address, lat, lng, open_time, close_time, break_start, break_end, created_at, created_by, tagline, extra_note"
       );
+
+    if (Array.isArray(restaurantIds) && restaurantIds.length > 0) {
+      fallbackQuery = fallbackQuery.in("id", restaurantIds);
+    }
+
+    const { data: basic } = await fallbackQuery;
     return (basic || []).map((r) => ({
       ...r,
       rating: 4.0,
+      review_count: 0,
       categories: [],
       image: null,
+      images: [],
+      created_at: r.created_at,
       is_open: isOpenNow(r.open_time, r.close_time, r.break_start, r.break_end),
+      tagline: r.tagline || null,
+      extra_note: r.extra_note || null,
+      created_by: r.created_by || null,
+      recommended_by: null,
+      reviews: [],
+      review_photos: [],
     }));
   }
+}
+
+export async function fetchRestaurantDetail(restaurantId) {
+  if (!restaurantId) return null;
+  const results = await fetchRestaurantsWithData([restaurantId]);
+  if (!Array.isArray(results) || results.length === 0) return null;
+  return results[0];
 }
 
 // 간단한 레스토랑 목록

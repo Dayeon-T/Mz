@@ -195,6 +195,30 @@ create policy "read all reviews" on public.reviews for select using (true);
 create policy "read all review_images" on public.review_images for select using (true);
 create policy "read all review_tags" on public.review_tags for select using (true);
 
+create policy "categories insert self" on public.categories
+for insert with check (auth.role() = 'authenticated');
+create policy "categories update self" on public.categories
+for update using (auth.role() = 'authenticated')
+with check (auth.role() = 'authenticated');
+create policy "restaurant_categories insert self" on public.restaurant_categories
+for insert with check (
+exists (
+select 1
+from public.restaurants r
+where r.id = restaurant_categories.restaurant_id
+and r.created_by = auth.uid()
+)
+);
+create policy "restaurant_categories delete self" on public.restaurant_categories
+for delete using (
+exists (
+select 1
+from public.restaurants r
+where r.id = restaurant_categories.restaurant_id
+and r.created_by = auth.uid()
+)
+);
+
 -- 맛집 작성자만 insert/update
 create policy "restaurants insert owner" on public.restaurants
 for insert with check (created_by = auth.uid());
@@ -235,3 +259,31 @@ for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create policy "profiles insert self" on public.profiles
 for insert with check (id = auth.uid());
+
+-- 1) RLS 활성화(이미 켜져 있다면 생략 가능)
+alter table restaurants enable row level security;
+
+-- 2) 자신이 만든 맛집만 조회 가능
+create policy "select own restaurants"
+on restaurants
+for select
+using (created_by = auth.uid());
+
+-- 3) 자신이 만든 맛집만 수정 가능
+create policy "update own restaurants"
+on restaurants
+for update
+using (created_by = auth.uid())
+with check (created_by = auth.uid());
+
+-- 4) 자신이 만든 맛집만 삭제 가능
+create policy "delete own restaurants"
+on restaurants
+for delete
+using (created_by = auth.uid());
+
+-- 5) 자신의 사용자 ID를 created_by로 넣는 경우에만 새 맛집 등록 허용
+create policy "insert own restaurants"
+on restaurants
+for insert
+with check (created_by = auth.uid());
