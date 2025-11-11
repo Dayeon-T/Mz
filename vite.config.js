@@ -4,6 +4,6 @@ import svgr from "vite-plugin-svgr";
 
 // Wrap config so we can switch the base path when building for GitHub Pages.
 export default defineConfig(({ command }) => ({
-  base: command === "build" ? "/Mz/" : "/",
+  base: "/",
   plugins: [react(), svgr()],
 }));
