@@ -1,30 +1,33 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
-import Ping from '../assets/ping.svg?react'
-import User from '../assets/user.svg?react'
-import { getProfileById } from '../api/profiles'
-import { signOut as signOutApi } from '../api/auth'
+import { useState, useEffect } from "react";
+import { supabase } from "../lib/supabase";
+import Ping from "../assets/ping.svg?react";
+import User from "../assets/user.svg?react";
+import { getProfileById } from "../api/profiles";
+import { signOut as signOutApi } from "../api/auth";
+import { Link } from "react-router-dom"; // 이미 없다면 추가
 
-const profileContainerStyles = "w-[418px] h-[141px] bg-white rounded-b-[100px] rounded-tr-[100px] mt-[16px] flex items-center"
-const avatarStyles = "ml-[40px] w-[94px] h-[94px] bg-search-bg rounded-[100px] flex items-center justify-center"
-const userInfoStyles = "ml-[20px] flex justify-center flex-col"
-const usernameStyles = "text-[31px] font-bold mb-[4px]"
-const handleStyles = "text-[22px] font-semibold text-[#727272]"
-const locationContainerStyles = "flex items-center"
-const locationTextStyles = "ml-[4px] text-[20px] text-text font-medium"
-const loginContainerStyles = "w-full h-full flex flex-col justify-center items-center"
-const loginTextStyles = "text-xl"
-const linkStyles = "text-text font-semibold hover:underline cursor-pointer"
+const profileContainerStyles =
+  "w-[418px] h-[141px] bg-white rounded-b-[100px] rounded-tr-[100px] mt-[16px] flex items-center";
+const avatarStyles =
+  "ml-[40px] w-[94px] h-[94px] bg-search-bg rounded-[100px] flex items-center justify-center";
+const userInfoStyles = "ml-[20px] flex justify-center flex-col";
+const usernameStyles = "text-[31px] font-bold mb-[4px]";
+const handleStyles = "text-[22px] font-semibold text-[#727272]";
+const locationContainerStyles = "flex items-center";
+const locationTextStyles = "ml-[4px] text-[20px] text-text font-medium";
+const loginContainerStyles =
+  "w-full h-full flex flex-col justify-center items-center";
+const loginTextStyles = "text-xl";
+const linkStyles = "text-text font-semibold hover:underline cursor-pointer";
 
 function LoggedInProfile({ user, profile }) {
-  
   return (
     <>
       <div className={avatarStyles}>
         {profile?.avatar_url ? (
-          <img 
-            src={profile.avatar_url} 
-            alt="프로필" 
+          <img
+            src={profile.avatar_url}
+            alt="프로필"
             className="w-full h-full rounded-full object-cover"
           />
         ) : (
@@ -33,71 +36,83 @@ function LoggedInProfile({ user, profile }) {
       </div>
       <div className={userInfoStyles}>
         <p className={usernameStyles}>
-          {profile?.nickname || '사용자'} &nbsp;
-          <span className={handleStyles}>@{user?.email?.split('@')[0]}</span>
+          {profile?.nickname || "사용자"} &nbsp;
+          <span className={handleStyles}>@{user?.email?.split("@")[0]}</span>
         </p>
         <div className={locationContainerStyles}>
           <Ping />
-          <p className={locationTextStyles}>서울특별시 관악구 호암로</p>
+          <p className={locationTextStyles}>{profile?.address}</p>
         </div>
-        
-        
+        <div className="mt-2">
+          <Link
+            to="/mypage"
+            className="text-[18px] font-semibold text-text underline decoration-transparent transition-all hover:decoration-current"
+          >
+            마이페이지
+          </Link>
+        </div>
       </div>
     </>
-  )
+  );
 }
 
 function LoginPrompt({ onLoginClick }) {
   return (
     <div className={loginContainerStyles}>
       <p className={loginTextStyles}>
-        <span onClick={onLoginClick} className={linkStyles}>로그인</span> / 
-        <span onClick={onLoginClick} className={linkStyles}>회원가입</span> 하고 맛집 알아보기
+        <span onClick={onLoginClick} className={linkStyles}>
+          로그인
+        </span>{" "}
+        /
+        <span onClick={onLoginClick} className={linkStyles}>
+          회원가입
+        </span>{" "}
+        하고 맛집 알아보기
       </p>
     </div>
-  )
+  );
 }
 
 export default function UserProfile({ onLoginClick }) {
-  const [user, setUser] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let mounted = true
+    let mounted = true;
 
     // 인증 상태 변화 감지
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return
-        
-        console.log('UserProfile: 인증 상태 변화:', event, session?.user?.id)
-        
-        setUser(session?.user ?? null)
-        
-        if (session?.user) {
-          // 로그인 시 프로필 정보 가져오기
-          try {
-            const profileData = await getProfileById(session.user.id)
-            if (mounted) setProfile(profileData)
-          } catch (error) {
-            console.error('프로필 로드 오류:', error)
-            if (mounted) setProfile(null)
-          }
-        } else {
-          // 로그아웃 시 프로필 정보 초기화
-          if (mounted) setProfile(null)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      console.log("UserProfile: 인증 상태 변화:", event, session?.user?.id);
+
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        // 로그인 시 프로필 정보 가져오기
+        try {
+          const profileData = await getProfileById(session.user.id);
+          if (mounted) setProfile(profileData);
+        } catch (error) {
+          console.error("프로필 로드 오류:", error);
+          if (mounted) setProfile(null);
         }
-        
-        if (mounted) setLoading(false)
+      } else {
+        // 로그아웃 시 프로필 정보 초기화
+        if (mounted) setProfile(null);
       }
-    )
+
+      if (mounted) setLoading(false);
+    });
 
     return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [])
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -106,7 +121,7 @@ export default function UserProfile({ onLoginClick }) {
           <p className={loginTextStyles}>로딩중...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -117,5 +132,5 @@ export default function UserProfile({ onLoginClick }) {
         <LoginPrompt onLoginClick={onLoginClick} />
       )}
     </div>
-  )
+  );
 }

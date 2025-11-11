@@ -101,28 +101,35 @@ function buildOverlayContent(restaurant) {
   const rating = Number.isFinite(restaurant.rating)
     ? Math.max(0, Math.min(5, Number(restaurant.rating)))
     : 0;
-  const widthPercent = (rating / 5) * 100;
+  // Star SVG viewBox width is 184, so calculate the exact filled width.
+  const filledWidth = ((rating / 5) * 184).toFixed(1);
+  const ratingLabel = rating ? rating.toFixed(1) : "0.0";
+  const markerEmoji = restaurant.marker_emoji || "";
+  const detailUrl = restaurant.id ? `/store/${restaurant.id}` : "#";
+  const reviewUrl = restaurant.id ? `/store/${restaurant.id}/review` : "#";
 
   const container = document.createElement("div");
   container.innerHTML = `
     <div style="position: relative;">
       <div style="width: 500px;
-                 height: 250px;
+                 height: 300px;
                  border-radius: 20px;
                  background: #FFF;
                  padding: 30px;
                  box-shadow: 0 8px 30px rgba(0,0,0,0.15);
                  position: relative;
                  z-index: 1;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <p style="color: #000;
-                   font-size: 26px;
-                   font-weight: 600;
-                   margin: 0 0 15px 0;">${restaurant.name ?? "이름 미상"}</p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <a href="${detailUrl}" style="color: inherit; text-decoration: none;">
+            <p style="color: #000;
+                     font-size: 26px;
+                     font-weight: 600;
+                     margin: 0 0 15px 0;">${restaurant.name ?? "이름 미상"}</p>
+          </a>
           <button type="button" data-overlay-close="true"
                   style="font-size: 22px; border: none; background: transparent; cursor: pointer; color: #999;">×</button>
         </div>
-        <div style="display: flex; gap: 28px; align-items: center;">
+        <div style="display: flex; gap: 28px; align-items: flex-start;">
           <div style="width: 141px;
                       height: 141px;
                       border-radius: 22px;
@@ -130,20 +137,29 @@ function buildOverlayContent(restaurant) {
                       overflow: hidden;">
             ${
               restaurant.image
-                ? `<img src="${
-                    restaurant.image
-                  }" style="width: 100%; height: 100%; object-fit: cover;" alt="${
+                ? `<a href="${detailUrl}" style="display: block; width: 100%; height: 100%;">
+                    <img src="${
+                      restaurant.image
+                    }" style="width: 100%; height: 100%; object-fit: cover;" alt="${
                     restaurant.name ?? ""
-                  }">`
-                : '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #666; font-size: 14px;">이미지 없음</div>'
+                  }">
+                  </a>`
+                : `<a href="${detailUrl}" style="display: block; width: 100%; height: 100%; text-decoration: none;">
+                    <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #f4f4f4;">
+                      <div style="width: 96px; height: 96px; border-radius: 50%; background: #FFF; display: flex; align-items: center; justify-content: center; font-size: 42px;">
+                        ${markerEmoji || "🍽️"}
+                      </div>
+                    </div>
+                  </a>`
             }
           </div>
           <div style="flex: 1;">
             <div style="margin-bottom: 10px;">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 184 37" style="width: 190px; height: 64px;">
+              <a href="${detailUrl}" style="display: inline-flex; flex-direction: column; gap: 4px; text-decoration: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 184 37" style="width: 190px; height: 64px; pointer-events: none;">
                 <defs>
                   <clipPath id="${clipId}">
-                    <rect x="0" y="0" width="${widthPercent}%" height="37" />
+                    <rect x="0" y="0" width="${filledWidth}" height="37" />
                   </clipPath>
                 </defs>
                 <g fill="#E2E2E2">
@@ -161,6 +177,10 @@ function buildOverlayContent(restaurant) {
                   <path d="M165.549 2.92705C165.848 2.00574 167.152 2.00574 167.451 2.92705L170.429 12.0922C170.563 12.5042 170.947 12.7832 171.38 12.7832H181.017C181.986 12.7832 182.388 14.0228 181.605 14.5922L173.808 20.2566C173.458 20.5112 173.311 20.9626 173.445 21.3746L176.423 30.5398C176.722 31.4611 175.668 32.2272 174.884 31.6578L167.088 25.9934C166.737 25.7388 166.263 25.7388 165.912 25.9934L158.116 31.6578C157.332 32.2272 156.278 31.4611 156.577 30.5398L159.555 21.3746C159.689 20.9626 159.542 20.5112 159.192 20.2566L151.395 14.5922C150.612 14.0228 151.014 12.7832 151.983 12.7832H161.62C162.053 12.7832 162.437 12.5042 162.571 12.0922L165.549 2.92705Z" />
                 </g>
               </svg>
+                <div style="font-size: 18px; font-weight: 600; color: #E7673C;">
+                  ${ratingLabel}점 / 5.0
+                </div>
+              </a>
             </div>
             <p style="color: #6C6C6C; font-size: 15px; margin: 0 0 12px 0;">
               ${restaurant.address ?? "주소 정보 없음"}
@@ -168,13 +188,14 @@ function buildOverlayContent(restaurant) {
             <div style="margin-bottom: 12px;">
               ${formatCategories(restaurant.categories)}
             </div>
+            
             <p style="color: #000; font-size: 16px; font-weight: 500; margin: 0;">
               ${restaurant.tagline ?? ""}
             </p>
           </div>
         </div>
       </div>
-      <div style="position: absolute; bottom: -10px; left: 50%;
+      <div style="position: absolute; bottom: -14px; left: 50%;
                  transform: translateX(-50%); width: 0; height: 0;
                  border-left: 15px solid transparent;
                  border-right: 15px solid transparent;
@@ -196,7 +217,6 @@ export default function KakaoMap({
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
-  const markerMapRef = useRef(new Map());
   const overlayMapRef = useRef(new Map());
   const currentOverlayRef = useRef(null);
   const restaurantMapRef = useRef(new Map());
@@ -204,6 +224,56 @@ export default function KakaoMap({
   const showOverlayRef = useRef(showOverlay);
   const activeIdRef = useRef(activeRestaurantId);
   const [isMapReady, setIsMapReady] = useState(false);
+
+  const buildMarkerContent = (restaurant) => {
+    const emoji = restaurant.marker_emoji?.trim() || "🍽️";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", `${restaurant.name ?? "맛집"} 위치 보기`);
+    button.style.cssText =
+      "background: none; border: none; padding: 0; cursor: pointer;";
+
+    const markerShell = document.createElement("div");
+    markerShell.style.cssText = `
+      width: 64px;
+      height: 69px;
+      background-image: url('${markerSvgUrl}');
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    const emojiCircle = document.createElement("div");
+    emojiCircle.style.cssText = `
+      position: absolute;
+      top: 9px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: #ffffff;
+      border:5px solid #F97E55;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 600;
+      color: #1f1f1f;
+      box-shadow: 0 6px 6px rgba(0, 0, 0, 0.12);
+    `;
+    emojiCircle.textContent = emoji;
+
+    markerShell.appendChild(emojiCircle);
+    button.appendChild(markerShell);
+
+    return button;
+  };
 
   const hideCurrentOverlay = () => {
     currentOverlayRef.current?.setMap(null);
@@ -216,17 +286,14 @@ export default function KakaoMap({
     markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
 
-    listenersRef.current.forEach(({ marker, handler }) => {
-      if (window.kakao?.maps?.event) {
-        window.kakao.maps.event.removeListener(marker, "click", handler);
-      }
+    listenersRef.current.forEach(({ element, type, handler }) => {
+      element.removeEventListener(type, handler);
     });
     listenersRef.current = [];
 
     overlayMapRef.current.forEach((overlay) => overlay.setMap(null));
     overlayMapRef.current.clear();
 
-    markerMapRef.current.clear();
     restaurantMapRef.current.clear();
   };
 
@@ -247,7 +314,8 @@ export default function KakaoMap({
       overlay = new window.kakao.maps.CustomOverlay({
         content,
         position: new window.kakao.maps.LatLng(restaurant.lat, restaurant.lng),
-        yAnchor: 1.4,
+        yAnchor: 1.1,
+        zIndex: 5,
       });
 
       const closeButton = content.querySelector("[data-overlay-close]");
@@ -271,15 +339,34 @@ export default function KakaoMap({
     overlay.setMap(mapRef.current);
     currentOverlayRef.current = overlay;
 
-    const marker = markerMapRef.current.get(restaurant.id);
-    if (marker) {
-      const position = marker.getPosition();
-      if (position) {
-        window.requestAnimationFrame(() => {
-          mapRef.current?.panTo(position);
-        });
+    const position = new window.kakao.maps.LatLng(
+      restaurant.lat,
+      restaurant.lng
+    );
+
+    window.requestAnimationFrame(() => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      const projection = map.getProjection?.();
+      if (projection && projection.containerPointFromCoords) {
+        const markerPoint = projection.containerPointFromCoords(position);
+        if (markerPoint) {
+          const targetPoint = new window.kakao.maps.Point(
+            markerPoint.x,
+            markerPoint.y - 140
+          );
+          const targetLatLng =
+            projection.coordsFromContainerPoint?.(targetPoint);
+          if (targetLatLng) {
+            map.panTo(targetLatLng);
+            return;
+          }
+        }
       }
-    }
+
+      map.panTo(position);
+    });
   };
 
   useEffect(() => {
@@ -332,12 +419,6 @@ export default function KakaoMap({
     const kakao = window.kakao;
     const map = mapRef.current;
 
-    const markerImage = new kakao.maps.MarkerImage(
-      markerSvgUrl,
-      new kakao.maps.Size(64, 69),
-      { offset: new kakao.maps.Point(27, 69) }
-    );
-
     const bounds = new kakao.maps.LatLngBounds();
     let hasValidPosition = false;
 
@@ -350,23 +431,32 @@ export default function KakaoMap({
       bounds.extend(position);
       hasValidPosition = true;
 
-      const marker = new kakao.maps.Marker({
+      const markerButton = buildMarkerContent(restaurant);
+
+      const markerOverlay = new kakao.maps.CustomOverlay({
         position,
-        title: restaurant.name,
-        image: markerImage,
+        content: markerButton,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        zIndex: 4,
       });
-      marker.setMap(map);
 
-      markersRef.current.push(marker);
-      markerMapRef.current.set(restaurant.id, marker);
+      markerOverlay.setMap(map);
 
-      const clickHandler = () => {
+      markersRef.current.push(markerOverlay);
+
+      const clickHandler = (event) => {
+        event.preventDefault();
         if (!showOverlayRef.current) return;
         showOverlayForRestaurant(restaurant);
       };
 
-      kakao.maps.event.addListener(marker, "click", clickHandler);
-      listenersRef.current.push({ marker, handler: clickHandler });
+      markerButton.addEventListener("click", clickHandler);
+      listenersRef.current.push({
+        element: markerButton,
+        type: "click",
+        handler: clickHandler,
+      });
     });
 
     if (hasValidPosition) {

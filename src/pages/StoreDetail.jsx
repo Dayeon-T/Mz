@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchRestaurantDetail } from "../api/restaurants";
 import MzSvg from "../assets/mz맛집.svg?react";
@@ -9,8 +9,13 @@ import Timer from "../assets/time.svg?react";
 import Wifi from "../assets/wifi.svg?react";
 import Pojang from "../assets/eat.svg?react";
 import Etc from "../assets/etc.svg?react";
-import Bookmark from "../assets/bookmark.svg?react";
+
 import KakaoMap from "../components/KakaoMap";
+import { toggleFavorite, isFavorite } from "../api/favorites";
+import toast from "react-hot-toast";
+import Heart from "../components/Heart";
+import Heart2 from "../components/Heart2";
+import { recordRecentView } from "../api/recentViews";
 
 const formatTime = (timeString) => {
   if (!timeString) return null;
@@ -162,6 +167,9 @@ export default function StoreDetail() {
   const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef(null);
   const dragStartXRef = useRef(0);
+  const [reviewSort, setReviewSort] = useState("latest");
+  const [favorite, setFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -199,6 +207,37 @@ export default function StoreDetail() {
       active = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!restaurant?.id) return;
+
+    const logView = async () => {
+      try {
+        await recordRecentView(restaurant.id);
+      } catch (err) {
+        console.error("최근 본 가게 기록 실패:", err);
+      }
+    };
+
+    logView();
+  }, [restaurant?.id]);
+
+  useEffect(() => {
+    let active = true;
+    const loadFavorite = async () => {
+      if (!restaurant?.id) return;
+      try {
+        const flag = await isFavorite(restaurant.id);
+        if (active) setFavorite(flag);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadFavorite();
+    return () => {
+      active = false;
+    };
+  }, [restaurant?.id]);
 
   const images = useMemo(() => {
     if (!restaurant) return [];
@@ -241,6 +280,29 @@ export default function StoreDetail() {
       setPageIndex(totalPages - 1);
     }
   }, [pageIndex, totalPages]);
+
+  const reviews = useMemo(() => {
+    const list = restaurant?.reviews;
+    return Array.isArray(list) ? list : [];
+  }, [restaurant]);
+
+  const sortedReviews = useMemo(() => {
+    if (reviews.length === 0) return [];
+    const clone = [...reviews];
+    switch (reviewSort) {
+      case "rating-asc":
+        return clone.sort((a, b) => (a.rating ?? 0) - (b.rating ?? 0));
+      case "rating-desc":
+        return clone.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+      case "latest":
+      default:
+        return clone.sort((a, b) => {
+          const aTime = new Date(a.created_at || a.visit_date || 0).getTime();
+          const bTime = new Date(b.created_at || b.visit_date || 0).getTime();
+          return bTime - aTime;
+        });
+    }
+  }, [reviews, reviewSort]);
 
   const dragPercent = (() => {
     const sliderWidth = sliderRef.current?.clientWidth || 1;
@@ -287,6 +349,23 @@ export default function StoreDetail() {
     setIsDragging(false);
   };
 
+  const handleToggleFavorite = useCallback(async () => {
+    if (!restaurant?.id || favoriteLoading) return;
+    try {
+      setFavoriteLoading(true);
+      const next = await toggleFavorite(restaurant.id);
+      setFavorite(next);
+      toast.success(
+        next ? "즐겨찾기에 추가했습니다." : "즐겨찾기에서 삭제했습니다."
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message || "즐겨찾기 처리에 실패했습니다.");
+    } finally {
+      setFavoriteLoading(false);
+    }
+  }, [restaurant?.id, favoriteLoading]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-primary text-gray-500">
@@ -327,7 +406,6 @@ export default function StoreDetail() {
   const reviewPhotos = Array.isArray(restaurant.review_photos)
     ? restaurant.review_photos
     : [];
-  const reviews = Array.isArray(restaurant.reviews) ? restaurant.reviews : [];
 
   const handleWriteReview = () => {
     if (!restaurant?.id) return;
@@ -489,8 +567,29 @@ export default function StoreDetail() {
                   {restaurant.has_wifi ? "O" : "X"}
                 </p>
               </div>
-              <div className="flex justify-between">
-                <Bookmark />
+              <div className="flex items-start justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={handleToggleFavorite}
+                  disabled={favoriteLoading}
+                  aria-pressed={favorite}
+                >
+                  {favorite ? (
+                    <Heart
+                      width={28}
+                      height={28}
+                      fill={"#FF6C6F"}
+                      border="#FF6C6F"
+                    />
+                  ) : (
+                    <Heart2
+                      width={28}
+                      height={28}
+                      fill={"#FF6C6F"}
+                      border="#FF6C6F"
+                    />
+                  )}
+                </button>
                 <div className="w-[90%] h-[100%] rounded-[40px] overflow-hidden">
                   <KakaoMap
                     restaurants={mapRestaurants}
@@ -557,25 +656,14 @@ export default function StoreDetail() {
             <div className="h-2 border-b-2 border-red-200/70 mt-2 mb-8"></div>
             <div className="flex items-center justify-center mt-4">
               <div>
-                <div className="flex flex-col items-center gap-4">
-                  <RatingValue
-                    rating={restaurant.rating}
-                    digits={1}
-                    className="text-black text-5xl font-semibold "
-                  />
-                  <StarSvg
-                    idSuffix={`${restaurant.id}-reviews`}
-                    rating={restaurant.rating}
-                  />
-                  <div className="flex items-center jsutify-center">
-                    <ReviewCount
-                      count={restaurant.review_count}
-                      className="text-red-400 text-2xl font-black"
-                    />
-                    <p className="text-black text-2xl font-medium">
-                      &nbsp; 명이 리뷰를 남겼어요
-                    </p>
-                  </div>
+                <div className="flex flex-col items-center gap-4"></div>
+                <div className="flex items-center gap-3"></div>
+              </div>
+            </div>
+            <div>
+              {restaurant.review_count === 0 ? (
+                <>
+                  <p className="mt-4 text-gray-500">등록된 리뷰가 없습니다.</p>
                   <button
                     type="button"
                     onClick={handleWriteReview}
@@ -585,84 +673,129 @@ export default function StoreDetail() {
                       리뷰 작성
                     </div>
                   </button>
-                </div>
-                <div className="flex items-center gap-3"></div>
-              </div>
-            </div>
-            <div>
-              {restaurant.review_count === 0 ? (
-                <p className="mt-4 text-gray-500">등록된 리뷰가 없습니다.</p>
+                </>
               ) : (
-                <div className="mt-6 flex flex-col gap-6">
-                  {reviews.length > 0 && (
-                    <div className="flex flex-col gap-5">
-                      {reviews.slice(0, 2).map((rev) => (
-                        <article
-                          key={rev.id}
-                          className="rounded-3xl bg-[#FFF6F4] px-6 py-5"
-                        >
-                          <div className="flex items-center gap-4">
-                            {rev.author?.avatar_url ? (
-                              <img
-                                src={rev.author.avatar_url}
-                                alt={`${rev.author?.nickname || "익명"} 프로필`}
-                                className="w-12 h-12 rounded-full object-cover border border-gray-200"
-                              />
-                            ) : (
-                              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-sm text-gray-500">
-                                {(rev.author?.nickname || "?").substring(0, 1)}
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-lg font-semibold text-black">
-                                {rev.author?.nickname || "익명"}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                방문일 &nbsp;&nbsp;&nbsp;
-                                {formatVisitDateLabel(rev.visit_date) ||
-                                  "최근 방문"}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="mt-4">
-                            {rev.images && rev.images.length > 0 ? (
-                              <div className="grid grid-cols-4 gap-4 mb-8">
-                                {rev.images.slice(0, 4).map((src, idx) => (
-                                  <div
-                                    key={`${restaurant.id}-review-photo-${idx}`}
-                                    className="  mt-2 h-48 rounded-3xl overflow-hidden bg-gray-100"
-                                  >
-                                    <img
-                                      src={src}
-                                      alt={`${restaurant.name} 리뷰 사진 ${
-                                        idx + 1
-                                      }`}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="py-4 text-gray-500">
-                                등록된 리뷰 사진이 없습니다.
-                              </p>
-                            )}
-                          </div>
-                          <SvgStarBar
-                            idSuffix={`${rev.id}-rating`}
-                            rating={rev.rating}
-                            reviewCount={0}
-                          />
-                          {rev.text && (
-                            <p className="mt-3 text-black text-2xl font-normal">
-                              {rev.text}
-                            </p>
-                          )}
-                        </article>
-                      ))}
+                <>
+                  <div className="flex flex-col justify-center items-center gap-4">
+                    <RatingValue
+                      rating={restaurant.rating}
+                      digits={1}
+                      className="text-black text-5xl font-semibold "
+                    />
+                    <StarSvg
+                      idSuffix={`${restaurant.id}-reviews`}
+                      rating={restaurant.rating}
+                    />
+                    <div className="flex items-center jsutify-center">
+                      <p className="text-black text-2xl font-medium">
+                        <span className="text-red-400 text-2xl font-black">
+                          {restaurant.review_count}
+                        </span>
+                        &nbsp; 명이 리뷰를 남겼어요
+                      </p>
                     </div>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={handleWriteReview}
+                      className="mb-10 w-36 h-14 p-2 mt-8 bg-red-400 rounded-[20px] inline-flex justify-center items-center gap-2.5 transition-colors hover:bg-red-500"
+                    >
+                      <div className="justify-start text-white text-2xl font-semibold">
+                        리뷰 작성
+                      </div>
+                    </button>
+                  </div>
+                  <div className="mt-6 flex flex-col gap-6">
+                    {reviews.length > 0 && (
+                      <div className="flex flex-col gap-5">
+                        <div className="flex justify-end">
+                          <label className="flex items-center gap-2 text-sm text-gray-600">
+                            <span>정렬</span>
+                            <select
+                              value={reviewSort}
+                              onChange={(event) =>
+                                setReviewSort(event.target.value)
+                              }
+                              className="rounded-full border border-gray-300 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                            >
+                              <option value="rating-asc">별점 낮은순</option>
+                              <option value="latest">최신순</option>
+                              <option value="rating-desc">별점 높은순</option>
+                            </select>
+                          </label>
+                        </div>
+                        {sortedReviews.map((rev) => (
+                          <article
+                            key={rev.id}
+                            className="mb-8 rounded-3xl bg-[#FFF6F4] px-6 py-5"
+                          >
+                            <div className="flex items-center gap-4">
+                              {rev.author?.avatar_url ? (
+                                <img
+                                  src={rev.author.avatar_url}
+                                  alt={`${
+                                    rev.author?.nickname || "익명"
+                                  } 프로필`}
+                                  className="w-12 h-12 rounded-full object-cover border border-gray-200"
+                                />
+                              ) : (
+                                <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-sm text-gray-500">
+                                  {(rev.author?.nickname || "?").substring(
+                                    0,
+                                    1
+                                  )}
+                                </div>
+                              )}
+                              <div>
+                                <p className="text-lg font-semibold text-black">
+                                  {rev.author?.nickname || "익명"}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  방문일 &nbsp;&nbsp;&nbsp;
+                                  {formatVisitDateLabel(rev.visit_date) ||
+                                    "최근 방문"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-4">
+                              {rev.images && rev.images.length > 0 ? (
+                                <div className="grid grid-cols-4 gap-4 mb-8">
+                                  {rev.images.slice(0, 4).map((src, idx) => (
+                                    <div
+                                      key={`${restaurant.id}-review-photo-${idx}`}
+                                      className="  mt-2 h-48 rounded-3xl overflow-hidden bg-gray-100"
+                                    >
+                                      <img
+                                        src={src}
+                                        alt={`${restaurant.name} 리뷰 사진 ${
+                                          idx + 1
+                                        }`}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="py-4 text-gray-500">
+                                  등록된 리뷰 사진이 없습니다.
+                                </p>
+                              )}
+                            </div>
+                            <SvgStarBar
+                              idSuffix={`${rev.id}-rating`}
+                              rating={rev.rating}
+                              reviewCount={0}
+                            />
+                            {rev.text && (
+                              <p className="mt-3 text-black text-2xl font-normal">
+                                {rev.text}
+                              </p>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </section>

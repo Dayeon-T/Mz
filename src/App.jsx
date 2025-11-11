@@ -6,6 +6,7 @@ import Signin from "./pages/Signin";
 import SearchResult from "./pages/SearchResult";
 import StoreDetail from "./pages/StoreDetail";
 import ReviewForm from "./pages/ReviewForm";
+import MyPage from "./pages/MyPage"; // 상단 import 추가
 import { Routes, Route, Navigate } from "react-router-dom";
 
 function App() {
@@ -55,6 +56,10 @@ function App() {
       <Route
         path="/store/:id/review"
         element={user ? <ReviewForm /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/mypage"
+        element={user ? <MyPage /> : <Navigate to="/" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

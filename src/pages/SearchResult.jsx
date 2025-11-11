@@ -61,7 +61,7 @@ export default function SearchResult() {
         />
       </div>
 
-      <div className="w-full bg-white mt-10 rounded-t-[38px] grid grid-cols-3 gap-20 pt-20 px-20 pb-20">
+      <div className="w-full min-h-screen bg-white mt-10 rounded-t-[38px] grid grid-cols-3 gap-20 pt-20 px-20 pb-20">
         <StoreGridList stores={filtered} />
       </div>
     </div>

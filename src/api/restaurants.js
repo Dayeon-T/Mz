@@ -63,9 +63,10 @@ function isOpenNow(open, close, breakStart, breakEnd, now = new Date()) {
 export async function fetchRestaurantsWithData(restaurantIds) {
   try {
     let query = supabase.from("restaurants").select(`
-        id, name, address, lat, lng, created_at,
-        created_by, tagline, extra_note,
+        id, name, address, lat, lng, created_at, phone,
+        created_by, tagline, extra_note, marker_emoji,
         open_time, close_time, break_start, break_end,
+        has_takeout, has_delivery, has_reservation, has_parking, has_wifi,
         restaurant_categories:restaurant_categories(
           categories:categories!restaurant_categories_category_id_fkey(name)
         )
@@ -221,7 +222,7 @@ export async function fetchRestaurantsWithData(restaurantIds) {
         ? Number(
             (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)
           )
-        : 4.0;
+        : 0;
 
       const categories =
         r.restaurant_categories
@@ -255,6 +256,7 @@ export async function fetchRestaurantsWithData(restaurantIds) {
         id: r.id,
         name: r.name,
         address: r.address,
+        phone: r.phone,
         lat: r.lat,
         lng: r.lng,
         rating: avg,
@@ -266,10 +268,16 @@ export async function fetchRestaurantsWithData(restaurantIds) {
         is_open,
         tagline: r.tagline || null,
         extra_note: r.extra_note || null,
+        marker_emoji: r.marker_emoji || null,
         created_by: r.created_by || null,
         recommended_by: creatorProfile,
         reviews: detailedReviews,
         review_photos: reviewPhotosPreview,
+        has_delivery: r.has_delivery,
+        has_reservation: r.has_reservation,
+        has_parking: r.has_parking,
+        has_wifi: r.has_wifi,
+        has_takeout: r.has_takeout,
       };
     });
   } catch {
@@ -277,7 +285,7 @@ export async function fetchRestaurantsWithData(restaurantIds) {
     let fallbackQuery = supabase
       .from("restaurants")
       .select(
-        "id, name, address, lat, lng, open_time, close_time, break_start, break_end, created_at, created_by, tagline, extra_note"
+        "id, name, address, lat, lng, open_time, close_time, break_start, break_end, created_at, created_by, tagline, extra_note, marker_emoji, has_takeout, has_delivery, has_reservation, has_parking, has_wifi"
       );
 
     if (Array.isArray(restaurantIds) && restaurantIds.length > 0) {
@@ -287,7 +295,7 @@ export async function fetchRestaurantsWithData(restaurantIds) {
     const { data: basic } = await fallbackQuery;
     return (basic || []).map((r) => ({
       ...r,
-      rating: 4.0,
+      rating: 0,
       review_count: 0,
       categories: [],
       image: null,
@@ -296,10 +304,16 @@ export async function fetchRestaurantsWithData(restaurantIds) {
       is_open: isOpenNow(r.open_time, r.close_time, r.break_start, r.break_end),
       tagline: r.tagline || null,
       extra_note: r.extra_note || null,
+      marker_emoji: r.marker_emoji || null,
       created_by: r.created_by || null,
       recommended_by: null,
       reviews: [],
       review_photos: [],
+      has_delivery: r.has_delivery,
+      has_reservation: r.has_reservation,
+      has_parking: r.has_parking,
+      has_wifi: r.has_wifi,
+      has_takeout: r.has_takeout,
     }));
   }
 }
