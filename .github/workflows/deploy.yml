@@ -25,11 +25,24 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+
       - run: npm install
-      - run: npm run build
+      - run:
+          npm run build
+
+          # ✅ SPA 라우팅 새로고침 대응
+      - name: Copy index.html to 404.html
+        run: cp dist/index.html dist/404.html
+
+      # ✅ 커스텀 도메인 자동 설정
+      - name: Add CNAME file
+        run: echo "matz1p.monster" > dist/CNAME
+
+      # ✅ Pages 업로드
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
   deploy:
     environment:
       name: github-pages
