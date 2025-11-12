@@ -335,3 +335,22 @@ export async function listRestaurantsBasic() {
   if (error) throw error;
   return data || [];
 }
+
+export async function deleteRestaurant(restaurantId) {
+  if (!restaurantId) throw new Error("맛집 정보를 찾을 수 없습니다.");
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
+  if (!user?.id) throw new Error("로그인이 필요합니다.");
+
+  const { error } = await supabase
+    .from("restaurants")
+    .delete()
+    .eq("id", restaurantId)
+    .eq("created_by", user.id);
+
+  if (error) throw error;
+}

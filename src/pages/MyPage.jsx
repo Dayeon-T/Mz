@@ -11,6 +11,7 @@ import {
   fetchMyReviews,
   fetchRecentRestaurants,
 } from "../api/myPage";
+import { deleteRestaurant } from "../api/restaurants";
 import { signOut as signOutApi } from "../api/auth";
 import { updateReview, deleteReview } from "../api/reviews";
 
@@ -102,7 +103,13 @@ function RatingSelector({ value = 0, onChange }) {
   );
 }
 
-function RestaurantCard({ restaurant, metaLabel }) {
+function RestaurantCard({
+  restaurant,
+  metaLabel,
+  canManage,
+  onDelete,
+  deleting,
+}) {
   const image =
     restaurant?.image ||
     (Array.isArray(restaurant?.images) && restaurant.images.length > 0
@@ -176,6 +183,18 @@ function RestaurantCard({ restaurant, metaLabel }) {
           </span>
         </div>
         {metaLabel && <p className="text-xs text-gray-400">{metaLabel}</p>}
+      </div>
+      <div className="border-t border-gray-100 p-5">
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => onDelete?.(restaurant)}
+            disabled={deleting}
+            className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-red-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? "삭제 중..." : "삭제"}
+          </button>
+        )}
       </div>
     </article>
   );
@@ -304,6 +323,7 @@ export default function MyPage() {
   const [editingReview, setEditingReview] = useState(null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const [reviewModalError, setReviewModalError] = useState("");
+  const [deletingRestaurantId, setDeletingRestaurantId] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -492,6 +512,29 @@ export default function MyPage() {
       toast.error(message);
     }
   };
+
+  const handleDeleteRestaurant = useCallback(async (restaurant) => {
+    if (!restaurant?.id) return;
+    if (!window.confirm("이 맛집을 삭제하시겠습니까?")) return;
+    try {
+      setDeletingRestaurantId(restaurant.id);
+      await deleteRestaurant(restaurant.id);
+      setLists((prev) => ({
+        ...prev,
+        myRestaurants: prev.myRestaurants.filter(
+          (item) => item.id !== restaurant.id
+        ),
+        recent: prev.recent.filter((item) => item.id !== restaurant.id),
+        favorites: prev.favorites.filter((item) => item.id !== restaurant.id),
+      }));
+      toast.success("맛집을 삭제했습니다.");
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.message || "맛집 삭제에 실패했습니다.");
+    } finally {
+      setDeletingRestaurantId(null);
+    }
+  }, []);
 
   const activeList = useMemo(() => {
     switch (section) {
@@ -707,6 +750,9 @@ export default function MyPage() {
                     key={restaurant.id}
                     restaurant={restaurant}
                     metaLabel={metaLabel}
+                    canManage={section === "myRestaurants"}
+                    onDelete={handleDeleteRestaurant}
+                    deleting={deletingRestaurantId === restaurant.id}
                   />
                 );
               })}
