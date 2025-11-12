@@ -759,20 +759,27 @@ export default function StoreDetail() {
                             <div className="mt-4">
                               {rev.images && rev.images.length > 0 ? (
                                 <div className="grid grid-cols-4 gap-4 mb-8">
-                                  {rev.images.slice(0, 4).map((src, idx) => (
-                                    <div
-                                      key={`${restaurant.id}-review-photo-${idx}`}
-                                      className="  mt-2 h-48 rounded-3xl overflow-hidden bg-gray-100"
-                                    >
-                                      <img
-                                        src={src}
-                                        alt={`${restaurant.name} 리뷰 사진 ${
-                                          idx + 1
-                                        }`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                  ))}
+                                  {rev.images.slice(0, 4).map((image, idx) => {
+                                    const imageUrl =
+                                      typeof image === "string"
+                                        ? image
+                                        : image?.url ?? null;
+                                    if (!imageUrl) return null;
+                                    return (
+                                      <div
+                                        key={`${restaurant.id}-review-photo-${idx}`}
+                                        className="  mt-2 h-48 rounded-3xl overflow-hidden bg-gray-100"
+                                      >
+                                        <img
+                                          src={imageUrl}
+                                          alt={`${restaurant.name} 리뷰 사진 ${
+                                            idx + 1
+                                          }`}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <p className="py-4 text-gray-500">

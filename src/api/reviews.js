@@ -54,7 +54,7 @@ const uploadReviewImage = async (
 
 export async function updateReview(
   reviewId,
-  { rating, visitDate, text, files }
+  { rating, visitDate, text, files, removeImageIds = [] }
 ) {
   if (!reviewId) throw new Error("리뷰 정보를 찾을 수 없습니다.");
 
@@ -85,9 +85,33 @@ export async function updateReview(
   if (error) throw error;
 
   const currentReviewId = data?.id ?? reviewId;
+  const removeIds = Array.isArray(removeImageIds)
+    ? Array.from(
+        new Set(
+          removeImageIds
+            .map((value) => {
+              if (typeof value === "number" || typeof value === "string") {
+                return value;
+              }
+              return null;
+            })
+            .filter((value) => value !== null)
+        )
+      )
+    : [];
+
+  if (removeIds.length > 0) {
+    const { error: removeErr } = await supabase
+      .from("review_images")
+      .delete()
+      .in("id", removeIds)
+      .eq("review_id", currentReviewId);
+    if (removeErr) throw removeErr;
+  }
+
   const filesToUpload = Array.isArray(files) ? files.filter(Boolean) : [];
   if (filesToUpload.length === 0) {
-    return { id: currentReviewId };
+    return { id: currentReviewId, removed: removeIds.length };
   }
 
   let offset = 0;
@@ -98,7 +122,12 @@ export async function updateReview(
       .eq("review_id", currentReviewId)
       .order("sort_order", { ascending: false });
     if (existingImages && existingImages.length > 0) {
-      offset = Math.max(...existingImages.map((row) => row.sort_order + 1));
+      offset =
+        Math.max(
+          ...existingImages.map((row) =>
+            typeof row.sort_order === "number" ? row.sort_order : 0
+          )
+        ) + 1;
     }
   } catch (existingErr) {
     console.error(existingErr);
@@ -116,7 +145,7 @@ export async function updateReview(
   }
 
   if (uploads.length === 0) {
-    return { id: currentReviewId };
+    return { id: currentReviewId, removed: removeIds.length };
   }
 
   const { error: linkErr } = await supabase.from("review_images").insert(
@@ -129,7 +158,11 @@ export async function updateReview(
 
   if (linkErr) throw linkErr;
 
-  return { id: currentReviewId, imagesAdded: uploads.length };
+  return {
+    id: currentReviewId,
+    removed: removeIds.length,
+    imagesAdded: uploads.length,
+  };
 }
 
 export async function deleteReview(reviewId) {

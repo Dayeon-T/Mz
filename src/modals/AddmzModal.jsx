@@ -14,7 +14,8 @@ const inputstyle =
 const timeinput =
   "bg-[#ECECEC] flex-1 h-8 rounded-full text-center w-[45%] focus:outline-none px-4 focus:ring-1 ring-main/70 ";
 
-export default function AddmzModal({ onClose }) {
+export default function AddmzModal({ onClose, restaurant = null, onSaved }) {
+  const isEditing = !!restaurant?.id;
   const [address, setAddress] = useState("");
   const [detailAddress, setDetailAddress] = useState("");
   const [zonecode, setZonecode] = useState("");
@@ -298,6 +299,100 @@ export default function AddmzModal({ onClose }) {
     };
   };
 
+  useEffect(() => {
+    if (!restaurant) {
+      setStep(1);
+      setAddress("");
+      setDetailAddress("");
+      setZonecode("");
+      setName("");
+      setPhoneA("");
+      setPhoneB("");
+      setPhoneC("");
+      setHasTakeout(false);
+      setHasDelivery(false);
+      setHasReservation(false);
+      setHasParking(false);
+      setHasWifi(false);
+      setMarkerEmoji("");
+      setTagline("");
+      setCategoryInput("");
+      setTimeMode("everyday");
+      setIs24Hours(false);
+      setStartHour("");
+      setStartMinute("");
+      setEndHour("");
+      setEndMinute("");
+      setDaySchedules(
+        Array.from({ length: 7 }, () => ({
+          isClosed: false,
+          is24Hours: false,
+          startHour: "",
+          startMinute: "",
+          endHour: "",
+          endMinute: "",
+        }))
+      );
+      setImageFiles([]);
+      setImagePreviews([]);
+      return;
+    }
+
+    const [first = "", second = "", third = ""] = (
+      restaurant.phone || ""
+    ).split("-");
+    setStep(1);
+    setAddress(restaurant.address || "");
+    setDetailAddress("");
+    setZonecode("");
+    setName(restaurant.name || "");
+    setPhoneA(first);
+    setPhoneB(second);
+    setPhoneC(third);
+    setHasTakeout(!!restaurant.has_takeout);
+    setHasDelivery(!!restaurant.has_delivery);
+    setHasReservation(!!restaurant.has_reservation);
+    setHasParking(!!restaurant.has_parking);
+    setHasWifi(!!restaurant.has_wifi);
+    setMarkerEmoji(restaurant.marker_emoji || "");
+    setTagline(restaurant.tagline || "");
+    setCategoryInput(
+      Array.isArray(restaurant.categories) && restaurant.categories.length > 0
+        ? restaurant.categories.join(", ")
+        : ""
+    );
+
+    const splitTime = (time) => {
+      if (!time) return ["", ""];
+      const parts = time.split(":");
+      return [parts[0] || "", parts[1] || ""];
+    };
+
+    const [openH, openM] = splitTime(restaurant.open_time);
+    const [closeH, closeM] = splitTime(restaurant.close_time);
+    const is24 =
+      (restaurant.open_time || "").startsWith("00") &&
+      (restaurant.close_time || "").startsWith("23");
+
+    setTimeMode("everyday");
+    setIs24Hours(is24);
+    if (!is24) {
+      setStartHour(openH);
+      setStartMinute(openM);
+      setEndHour(closeH);
+      setEndMinute(closeM);
+    } else {
+      setStartHour("");
+      setStartMinute("");
+      setEndHour("");
+      setEndMinute("");
+    }
+    setImageFiles([]);
+    setImagePreviews([]);
+  }, [restaurant]);
+
+  const normalizeAddress = (value) => (value || "").replace(/\s+/g, " ").trim();
+
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
     if (submitting) return;
@@ -309,7 +404,6 @@ export default function AddmzModal({ onClose }) {
         : address;
       const phone = [phoneA, phoneB, phoneC].filter(Boolean).join("-");
       const { open_time, close_time } = buildOpenClose();
-
       const {
         data: { user },
         error: userErr,
@@ -318,35 +412,80 @@ export default function AddmzModal({ onClose }) {
       if (!user?.id) throw new Error("로그인이 필요합니다.");
 
       setSubmitting(true);
-      const { lat, lng } = await geocodeAddress(fullAddress);
+      const requiresGeocode =
+        !isEditing ||
+        normalizeAddress(fullAddress) !==
+          normalizeAddress(restaurant?.address) ||
+        !restaurant?.lat ||
+        !restaurant?.lng;
+      let coords = {
+        lat: restaurant?.lat ?? null,
+        lng: restaurant?.lng ?? null,
+      };
+      if (requiresGeocode) {
+        coords = await geocodeAddress(fullAddress);
+      }
 
-      const { data: inserted, error: insertErr } = await supabase
-        .from("restaurants")
-        .insert({
-          created_by: user.id,
-          name: name.trim(),
-          address: fullAddress,
-          phone: phone || null,
-          open_time,
-          close_time,
-          break_start: null,
-          break_end: null,
-          lat,
-          lng,
-          has_takeout: !!hasTakeout,
-          has_delivery: !!hasDelivery,
-          has_reservation: !!hasReservation,
-          has_parking: !!hasParking,
-          has_wifi: !!hasWifi,
-          marker_emoji: markerEmoji || null,
-          tagline: tagline || null,
-          extra_note: null,
-        })
-        .select("id")
-        .single();
-      if (insertErr) throw insertErr;
+      let restaurantId = restaurant?.id ?? null;
+      let inserted = null;
 
-      const restaurantId = inserted?.id;
+      if (isEditing) {
+        const { error: updateErr } = await supabase
+          .from("restaurants")
+          .update({
+            name: name.trim(),
+            address: fullAddress,
+            phone: phone || null,
+            open_time,
+            close_time,
+            break_start: null,
+            break_end: null,
+            lat: coords.lat,
+            lng: coords.lng,
+            has_takeout: !!hasTakeout,
+            has_delivery: !!hasDelivery,
+            has_reservation: !!hasReservation,
+            has_parking: !!hasParking,
+            has_wifi: !!hasWifi,
+            marker_emoji: markerEmoji || null,
+            tagline: tagline || null,
+            extra_note: null,
+          })
+          .eq("id", restaurant.id)
+          .eq("created_by", user.id);
+        if (updateErr) throw updateErr;
+      } else {
+        const { data: created, error: insertErr } = await supabase
+          .from("restaurants")
+          .insert({
+            created_by: user.id,
+            name: name.trim(),
+            address: fullAddress,
+            phone: phone || null,
+            open_time,
+            close_time,
+            break_start: null,
+            break_end: null,
+            lat: coords.lat,
+            lng: coords.lng,
+            has_takeout: !!hasTakeout,
+            has_delivery: !!hasDelivery,
+            has_reservation: !!hasReservation,
+            has_parking: !!hasParking,
+            has_wifi: !!hasWifi,
+            marker_emoji: markerEmoji || null,
+            tagline: tagline || null,
+            extra_note: null,
+          })
+          .select("id")
+          .single();
+        if (insertErr) throw insertErr;
+        inserted = created;
+      }
+
+      if (!restaurantId) {
+        restaurantId = inserted?.id;
+      }
       if (!restaurantId) throw new Error("맛집 ID를 확인할 수 없습니다.");
       const ownerFolder = user.id;
 
@@ -360,6 +499,16 @@ export default function AddmzModal({ onClose }) {
       };
 
       const categoryNames = parseCategories(categoryInput);
+      if (isEditing) {
+        try {
+          await supabase
+            .from("restaurant_categories")
+            .delete()
+            .eq("restaurant_id", restaurantId);
+        } catch (catRemoveErr) {
+          console.error(catRemoveErr);
+        }
+      }
       if (categoryNames.length > 0) {
         try {
           const { data: existingCategories, error: fetchCategoryErr } =
@@ -425,6 +574,27 @@ export default function AddmzModal({ onClose }) {
         }
       }
 
+      let imageSortOffset = 0;
+      if (isEditing) {
+        try {
+          const { data: existingImages } = await supabase
+            .from("restaurant_images")
+            .select("sort_order")
+            .eq("restaurant_id", restaurantId)
+            .order("sort_order", { ascending: false })
+            .limit(1);
+          if (
+            existingImages &&
+            existingImages.length > 0 &&
+            typeof existingImages[0].sort_order === "number"
+          ) {
+            imageSortOffset = existingImages[0].sort_order + 1;
+          }
+        } catch (orderErr) {
+          console.error(orderErr);
+        }
+      }
+
       const uploadImageFile = async (file, index, attempt = 0) => {
         const bucket = "restaurant-images";
         const ext = file.name?.split(".")?.pop()?.toLowerCase() || "jpg";
@@ -478,7 +648,7 @@ export default function AddmzModal({ onClose }) {
         for (let i = 0; i < imageFiles.length; i++) {
           try {
             const url = await uploadImageFile(imageFiles[i], i);
-            uploadedUrls.push({ url, sort_order: i });
+            uploadedUrls.push({ url, sort_order: imageSortOffset + i });
           } catch (uploadErr) {
             toast.error(
               uploadErr.message || `이미지 업로드 실패: ${imageFiles[i].name}`
@@ -496,11 +666,19 @@ export default function AddmzModal({ onClose }) {
                 sort_order: u.sort_order,
               }))
             );
-          if (linkErr) throw linkErr;
+          if (linkErr) {
+            toast.error(
+              linkErr.message ||
+                "이미지 정보를 저장할 권한이 없어 기본값으로 저장됩니다."
+            );
+          }
         }
       }
 
-      toast.success("맛집이 등록되었습니다!");
+      toast.success(
+        isEditing ? "맛집 정보를 수정했습니다!" : "맛집이 등록되었습니다!"
+      );
+      onSaved?.(restaurantId);
       onClose?.();
     } catch (err) {
       console.error(err);
@@ -1107,7 +1285,13 @@ export default function AddmzModal({ onClose }) {
                   disabled={submitting}
                   className="w-44 h-16 px-10 py-4 bg-red-400 rounded-3xl text-white text-3xl font-semibold disabled:opacity-60"
                 >
-                  등록
+                  {submitting
+                    ? isEditing
+                      ? "수정중..."
+                      : "등록중..."
+                    : isEditing
+                    ? "수정"
+                    : "등록"}
                 </button>
               </div>
             </div>

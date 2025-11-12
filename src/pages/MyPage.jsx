@@ -11,9 +11,10 @@ import {
   fetchMyReviews,
   fetchRecentRestaurants,
 } from "../api/myPage";
-import { deleteRestaurant } from "../api/restaurants";
+import { deleteRestaurant, fetchRestaurantDetail } from "../api/restaurants";
 import { signOut as signOutApi } from "../api/auth";
 import { updateReview, deleteReview } from "../api/reviews";
+import AddmzModal from "../modals/AddmzModal";
 
 const MENU_ITEMS = [
   { key: "recent", label: "최근 본 가게" },
@@ -108,6 +109,7 @@ function RestaurantCard({
   metaLabel,
   canManage,
   onDelete,
+  onEdit,
   deleting,
 }) {
   const image =
@@ -186,14 +188,23 @@ function RestaurantCard({
       </div>
       <div className="border-t border-gray-100 p-5">
         {canManage && (
-          <button
-            type="button"
-            onClick={() => onDelete?.(restaurant)}
-            disabled={deleting}
-            className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-red-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {deleting ? "삭제" : "삭제"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => onEdit?.(restaurant)}
+              className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-rose-50"
+            >
+              수정
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete?.(restaurant)}
+              disabled={deleting}
+              className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-red-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deleting ? "삭제중..." : "삭제"}
+            </button>
+          </div>
         )}
       </div>
     </article>
@@ -202,8 +213,12 @@ function RestaurantCard({
 
 function ReviewItem({ review, onEdit, onDelete }) {
   const restaurant = review.restaurant;
+  const firstImage =
+    Array.isArray(review.images) && review.images.length > 0
+      ? review.images[0]
+      : null;
   const cover =
-    review.images?.[0] ||
+    (typeof firstImage === "string" ? firstImage : firstImage?.url) ||
     restaurant?.image ||
     (Array.isArray(restaurant?.images) && restaurant.images[0]) ||
     null;
@@ -274,15 +289,20 @@ function ReviewItem({ review, onEdit, onDelete }) {
         )}
         {Array.isArray(review.images) && review.images.length > 0 && (
           <div className="flex flex-wrap gap-3">
-            {review.images.slice(0, 4).map((src, idx) => (
-              <img
-                key={`${review.id}-photo-${idx}`}
-                src={src}
-                alt=""
-                className="h-24 w-24 rounded-2xl object-cover"
-                loading="lazy"
-              />
-            ))}
+            {review.images.slice(0, 4).map((image, idx) => {
+              const imageUrl =
+                typeof image === "string" ? image : image?.url ?? null;
+              if (!imageUrl) return null;
+              return (
+                <img
+                  key={`${review.id}-photo-${idx}`}
+                  src={imageUrl}
+                  alt=""
+                  className="h-24 w-24 rounded-2xl object-cover"
+                  loading="lazy"
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -316,7 +336,8 @@ export default function MyPage() {
     visitMonth: "",
     visitDay: "",
     text: "",
-    files: [],
+    newPhotos: [],
+    removeImageIds: [],
   };
   const [isReviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewForm, setReviewForm] = useState(() => ({ ...emptyReviewForm }));
@@ -324,6 +345,8 @@ export default function MyPage() {
   const [reviewSaving, setReviewSaving] = useState(false);
   const [reviewModalError, setReviewModalError] = useState("");
   const [deletingRestaurantId, setDeletingRestaurantId] = useState(null);
+  const [restaurantModalOpen, setRestaurantModalOpen] = useState(false);
+  const [editingRestaurant, setEditingRestaurant] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -388,11 +411,26 @@ export default function MyPage() {
     }
   }, [user?.id]);
 
+  const revokeNewPhotoPreviews = useCallback((photos) => {
+    photos.forEach((item) => {
+      if (item?.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+    });
+  }, []);
+
   const openReviewModal = (review) => {
     if (!review) return;
     setReviewModalError("");
     const visit = review.visit_date ? new Date(review.visit_date) : null;
     const hasValidVisit = visit && !Number.isNaN(visit.getTime());
+    const normalizedImages = Array.isArray(review.images)
+      ? review.images
+          .map((img) =>
+            typeof img === "string" ? { id: null, url: img } : img
+          )
+          .filter((img) => img?.url)
+      : [];
     setReviewForm({
       rating: clamp5(review.rating ?? 0),
       visitYear: hasValidVisit ? String(visit.getFullYear()) : "",
@@ -401,14 +439,16 @@ export default function MyPage() {
         : "",
       visitDay: hasValidVisit ? String(visit.getDate()).padStart(2, "0") : "",
       text: review.text ?? "",
-      files: [],
+      newPhotos: [],
+      removeImageIds: [],
     });
-    setEditingReview(review);
+    setEditingReview({ ...review, images: normalizedImages });
     setReviewModalOpen(true);
   };
 
   const closeReviewModal = () => {
     if (reviewSaving) return;
+    revokeNewPhotoPreviews(reviewForm.newPhotos);
     setReviewModalOpen(false);
     setEditingReview(null);
     setReviewForm({ ...emptyReviewForm });
@@ -417,7 +457,65 @@ export default function MyPage() {
 
   const handleReviewFileChange = (event) => {
     const selected = Array.from(event.target.files || []);
-    setReviewForm((prev) => ({ ...prev, files: selected }));
+    if (selected.length === 0) return;
+
+    const valid = selected.filter(
+      (file) => file.type.startsWith("image/") && file.size <= 5 * 1024 * 1024
+    );
+
+    if (valid.length < selected.length) {
+      toast.error("이미지는 5MB 이하의 이미지 파일만 업로드할 수 있어요.");
+    }
+
+    const existingKeys = new Set(
+      reviewForm.newPhotos.map(
+        (item) =>
+          `${item.file.name}_${item.file.size}_${item.file.lastModified}`
+      )
+    );
+
+    const additions = valid
+      .filter(
+        (file) =>
+          !existingKeys.has(`${file.name}_${file.size}_${file.lastModified}`)
+      )
+      .map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+
+    if (additions.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
+    setReviewForm((prev) => ({
+      ...prev,
+      newPhotos: [...prev.newPhotos, ...additions],
+    }));
+
+    event.target.value = "";
+  };
+
+  const handleRemoveNewPhoto = (index) => {
+    setReviewForm((prev) => {
+      const target = prev.newPhotos[index];
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return {
+        ...prev,
+        newPhotos: prev.newPhotos.filter((_, i) => i !== index),
+      };
+    });
+  };
+
+  const toggleRemoveExistingImage = (imageId) => {
+    if (!imageId) return;
+    setReviewForm((prev) => {
+      const next = new Set(prev.removeImageIds);
+      if (next.has(imageId)) next.delete(imageId);
+      else next.add(imageId);
+      return { ...prev, removeImageIds: Array.from(next) };
+    });
   };
 
   const handleReviewSubmit = async (event) => {
@@ -479,7 +577,8 @@ export default function MyPage() {
         rating,
         visitDate: visitDateISO,
         text: textContent,
-        files: reviewForm.files,
+        files: reviewForm.newPhotos.map((item) => item.file),
+        removeImageIds: reviewForm.removeImageIds,
       });
       toast.success("리뷰를 수정했습니다.");
       await refreshReviews();
@@ -513,7 +612,7 @@ export default function MyPage() {
     }
   };
 
-  const handleDeleteRestaurant = useCallback(async (restaurant) => {
+  const handleDeleteRestaurant = async (restaurant) => {
     if (!restaurant?.id) return;
     if (!window.confirm("이 맛집을 삭제하시겠습니까?")) return;
     try {
@@ -528,11 +627,48 @@ export default function MyPage() {
         favorites: prev.favorites.filter((item) => item.id !== restaurant.id),
       }));
       toast.success("맛집을 삭제했습니다.");
+      if (editingRestaurant?.id === restaurant.id) {
+        closeRestaurantModal();
+      }
     } catch (err) {
       console.error(err);
       toast.error(err?.message || "맛집 삭제에 실패했습니다.");
     } finally {
       setDeletingRestaurantId(null);
+    }
+  };
+
+  const handleEditRestaurant = useCallback((restaurant) => {
+    if (!restaurant) return;
+    setEditingRestaurant(restaurant);
+    setRestaurantModalOpen(true);
+  }, []);
+
+  const closeRestaurantModal = useCallback(() => {
+    setRestaurantModalOpen(false);
+    setEditingRestaurant(null);
+  }, []);
+
+  const handleRestaurantSaved = useCallback(async (restaurantId) => {
+    if (!restaurantId) return;
+    try {
+      const updated = await fetchRestaurantDetail(restaurantId);
+      if (!updated) return;
+      setLists((prev) => ({
+        ...prev,
+        myRestaurants: prev.myRestaurants.map((item) =>
+          item.id === restaurantId ? updated : item
+        ),
+        recent: prev.recent.map((item) =>
+          item.id === restaurantId ? { ...item, ...updated } : item
+        ),
+        favorites: prev.favorites.map((item) =>
+          item.id === restaurantId ? { ...item, ...updated } : item
+        ),
+      }));
+    } catch (err) {
+      console.error(err);
+      toast.error("맛집 정보를 다시 불러오지 못했습니다.");
     }
   }, []);
 
@@ -752,6 +888,7 @@ export default function MyPage() {
                     metaLabel={metaLabel}
                     canManage={section === "myRestaurants"}
                     onDelete={handleDeleteRestaurant}
+                    onEdit={handleEditRestaurant}
                     deleting={deletingRestaurantId === restaurant.id}
                   />
                 );
@@ -857,17 +994,39 @@ export default function MyPage() {
                     기존 사진
                   </span>
                   <div className="flex flex-wrap gap-3">
-                    {editingReview.images.slice(0, 6).map((src, idx) => (
-                      <img
-                        key={`${editingReview.id}-existing-${idx}`}
-                        src={src}
-                        alt="기존 리뷰 이미지"
-                        className="h-20 w-20 rounded-2xl object-cover"
-                      />
-                    ))}
+                    {editingReview.images.slice(0, 6).map((img, idx) => {
+                      const imageId =
+                        typeof img === "string" ? null : img?.id || null;
+                      const imageUrl =
+                        typeof img === "string" ? img : img?.url ?? null;
+                      if (!imageUrl) return null;
+                      const marked =
+                        !!imageId &&
+                        reviewForm.removeImageIds.includes(imageId);
+                      return (
+                        <button
+                          type="button"
+                          key={`${editingReview.id}-existing-${idx}`}
+                          onClick={() => toggleRemoveExistingImage(imageId)}
+                          disabled={!imageId}
+                          className="relative h-20 w-20 overflow-hidden rounded-2xl border border-transparent transition hover:border-red-400 disabled:cursor-not-allowed"
+                        >
+                          <img
+                            src={imageUrl}
+                            alt="기존 리뷰 이미지"
+                            className="h-full w-full object-cover"
+                          />
+                          {marked && (
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/60 text-xs font-semibold text-white">
+                              삭제 예정
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                   <p className="text-xs text-gray-400">
-                    새 이미지를 추가하면 기존 이미지와 함께 노출돼요.
+                    이미지를 클릭하면 삭제/복원할 수 있어요.
                   </p>
                 </div>
               )}
@@ -891,10 +1050,26 @@ export default function MyPage() {
                     className="hidden"
                   />
                 </label>
-                {reviewForm.files.length > 0 && (
-                  <p className="text-xs text-gray-500">
-                    {reviewForm.files.length}개의 사진이 선택되었습니다.
-                  </p>
+                {reviewForm.newPhotos.length > 0 && (
+                  <div className="flex flex-wrap gap-3">
+                    {reviewForm.newPhotos.map((item, idx) => (
+                      <button
+                        type="button"
+                        key={`new-photo-${idx}`}
+                        onClick={() => handleRemoveNewPhoto(idx)}
+                        className="group relative h-20 w-20 overflow-hidden rounded-2xl"
+                      >
+                        <img
+                          src={item.previewUrl}
+                          alt="선택한 리뷰 이미지"
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute inset-0 hidden items-center justify-center bg-black/60 text-xs font-semibold text-white group-hover:flex">
+                          삭제
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -992,6 +1167,14 @@ export default function MyPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {restaurantModalOpen && (
+        <AddmzModal
+          restaurant={editingRestaurant}
+          onClose={closeRestaurantModal}
+          onSaved={handleRestaurantSaved}
+        />
       )}
 
       {/** TODO: 추가 모달이나 페이지 섹션을 여기에 배치 */}

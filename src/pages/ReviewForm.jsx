@@ -6,6 +6,24 @@ import { supabase } from "../lib/supabase";
 
 const clamp5 = (value) => Math.max(0, Math.min(5, Number(value) || 0));
 
+const MAX_REVIEW_IMAGE_SIZE = 5 * 1024 * 1024;
+
+const makeFileSignature = (file) =>
+  `${file.name}_${file.size}_${file.lastModified}`;
+
+const createPreviewItem = (file) => ({
+  file,
+  previewUrl: URL.createObjectURL(file),
+});
+
+const releasePreviews = (items = []) => {
+  items.forEach((item) => {
+    if (item?.previewUrl) {
+      URL.revokeObjectURL(item.previewUrl);
+    }
+  });
+};
+
 const StarIcon = ({ filled = false }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -45,7 +63,7 @@ const initialFormState = {
   visitMonth: "",
   visitDay: "",
   text: "",
-  files: [],
+  newPhotos: [],
 };
 
 export default function ReviewForm() {
@@ -56,7 +74,49 @@ export default function ReviewForm() {
 
   const handleFileChange = (event) => {
     const selected = Array.from(event.target.files || []);
-    setForm((prev) => ({ ...prev, files: selected }));
+    if (selected.length === 0) return;
+
+    const valid = selected.filter(
+      (file) =>
+        file.type.startsWith("image/") && file.size <= MAX_REVIEW_IMAGE_SIZE
+    );
+
+    if (valid.length < selected.length) {
+      toast.error("이미지는 5MB 이하의 이미지 파일만 업로드할 수 있어요.");
+    }
+
+    setForm((prev) => {
+      const existingKeys = new Set(
+        prev.newPhotos.map((item) => makeFileSignature(item.file))
+      );
+      const additions = valid
+        .filter((file) => !existingKeys.has(makeFileSignature(file)))
+        .map((file) => createPreviewItem(file));
+
+      if (additions.length === 0) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        newPhotos: [...prev.newPhotos, ...additions],
+      };
+    });
+
+    event.target.value = "";
+  };
+
+  const handleRemovePhoto = (index) => {
+    setForm((prev) => {
+      const target = prev.newPhotos[index];
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return {
+        ...prev,
+        newPhotos: prev.newPhotos.filter((_, idx) => idx !== index),
+      };
+    });
   };
 
   const handleSubmit = async (event) => {
@@ -199,10 +259,14 @@ export default function ReviewForm() {
         throw new Error("리뷰 ID를 확인할 수 없습니다.");
       }
 
-      if (form.files.length > 0) {
+      const filesToUpload = form.newPhotos
+        .map((item) => item?.file)
+        .filter(Boolean);
+
+      if (filesToUpload.length > 0) {
         const uploads = [];
-        for (let idx = 0; idx < form.files.length; idx += 1) {
-          const file = form.files[idx];
+        for (let idx = 0; idx < filesToUpload.length; idx += 1) {
+          const file = filesToUpload[idx];
           try {
             const url = await uploadReviewImage(file, idx, user.id, reviewId);
             uploads.push({ url, sort_order: idx });
@@ -235,6 +299,7 @@ export default function ReviewForm() {
       }
 
       toast.success("리뷰가 등록되었습니다!");
+      releasePreviews(form.newPhotos);
       navigate(`/store/${restaurantId}`, { replace: true });
     } catch (error) {
       console.error(error);
@@ -246,6 +311,7 @@ export default function ReviewForm() {
   };
 
   const handleCancel = () => {
+    releasePreviews(form.newPhotos);
     navigate(-1);
   };
 
@@ -359,10 +425,27 @@ export default function ReviewForm() {
                     className="hidden"
                   />
                 </label>
-                {form.files.length > 0 && (
-                  <p className="text-sm text-gray-500">
-                    {form.files.length}개의 사진이 선택되었습니다.
-                  </p>
+                {form.newPhotos.length > 0 && (
+                  <div className="flex flex-wrap gap-4">
+                    {form.newPhotos.map((item, idx) => (
+                      <button
+                        type="button"
+                        key={`preview-${idx}`}
+                        onClick={() => handleRemovePhoto(idx)}
+                        className="group relative h-24 w-24 overflow-hidden rounded-2xl"
+                        aria-label="선택한 사진 삭제"
+                      >
+                        <img
+                          src={item.previewUrl}
+                          alt="선택한 리뷰 이미지"
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute inset-0 hidden items-center justify-center bg-black/60 text-sm font-semibold text-white group-hover:flex">
+                          삭제
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </section>
