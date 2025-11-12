@@ -192,7 +192,7 @@ function RestaurantCard({
             disabled={deleting}
             className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-red-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {deleting ? "삭제 중..." : "삭제"}
+            {deleting ? "삭제" : "삭제"}
           </button>
         )}
       </div>

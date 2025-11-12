@@ -600,10 +600,12 @@ export default function AddmzModal({ onClose }) {
                         <input
                           className={inputstyle}
                           type="text"
-                          maxLength="3"
+                          maxLength={4}
                           value={phoneA}
                           onChange={(e) =>
-                            setPhoneA(e.target.value.replace(/\D/g, ""))
+                            setPhoneA(
+                              e.target.value.replace(/\D/g, "").slice(0, 4)
+                            )
                           }
                         />
                         <span>-</span>
