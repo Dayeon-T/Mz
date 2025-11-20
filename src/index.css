@@ -1,0 +1,53 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+body {
+  background-color: #f97e55;
+  font-family: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+}
+
+/* react-hot-toast 모든 애니메이션 차단 */
+[data-hot-toast] {
+  --hot-toast-enter: none !important;
+  --hot-toast-exit: none !important;
+}
+
+/* 모든 토스트 div에 대해 transform 제거하고 opacity만 허용 */
+[data-hot-toast] > div {
+  transform: none !important;
+  animation: none !important;
+  transition: opacity 0.3s ease !important;
+  will-change: opacity !important;
+}
+
+/* 사라질 때 opacity만 변경 */
+[data-hot-toast] > div[data-visible="false"] {
+  opacity: 0 !important;
+  transform: none !important;
+  transition: opacity 0.4s ease !important;
+}
+
+/* 나타날 때 opacity만 변경 */
+[data-hot-toast] > div[data-visible="true"] {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: opacity 0.3s ease !important;
+}
+
+/* 모든 내부 요소도 transform 제거 */
+[data-hot-toast] * {
+  transform: none !important;
+  animation: none !important;
+}
